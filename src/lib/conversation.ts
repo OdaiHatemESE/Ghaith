@@ -1,8 +1,7 @@
 // The talk loop with غيث: listen → think → speak → (listen again, hands-free) until you stop or go quiet.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform } from 'react-native';
 import type { OrbState } from '../components/Orb';
-import { useSpeakingLevel, useWebMicLevel } from './micLevel';
+import { useSpeakingLevel } from './micLevel';
 import { Action, useStore } from './store';
 import { playReply, stopSpeaking, useVoice } from './voice';
 
@@ -15,6 +14,7 @@ export function useConversation() {
   const [notice, setNotice] = useState('');
   const loop = useRef(false); // keep listening after each reply
   const listenRef = useRef<() => void>(() => {});
+  const followUp = useRef(false); // listening again by itself after a reply
 
   const send = useCallback(
     async (text: string, source: 'voice' | 'text') => {
@@ -29,12 +29,17 @@ export function useConversation() {
         if (speak && a.reply) {
           setState('speaking');
           playReply(a.reply, a.audio, a.audioType, () => {
-            if (loop.current && source === 'voice') listenRef.current();
-            else setState('idle');
+            if (loop.current && source === 'voice') {
+              followUp.current = true;
+              listenRef.current();
+            } else setState('idle');
           });
         } else {
           setState('idle');
-          if (loop.current && source === 'voice') listenRef.current();
+          if (loop.current && source === 'voice') {
+            followUp.current = true;
+            listenRef.current();
+          }
         }
       } catch (e) {
         loop.current = false;
@@ -48,7 +53,8 @@ export function useConversation() {
   const voice = useVoice(
     (t) => send(t, 'voice'),
     () => {
-      // Heard nothing: the conversation rests until the next tap
+      // Heard nothing: the conversation rests until the next tap (say so, unless it was a hands-free follow-up)
+      if (!followUp.current) setNotice('ما وصلني كلام. اضغط الكرة واحكي بعد ما تشوفها تتحرك.');
       loop.current = false;
       setState('idle');
     },
@@ -73,12 +79,14 @@ export function useConversation() {
   const tap = useCallback(() => {
     if (state === 'idle') {
       loop.current = settings.keep_listening;
+      followUp.current = false;
       listen();
     } else if (state === 'listening') {
       voice.stop();
     } else if (state === 'speaking') {
       stopSpeaking();
       loop.current = settings.keep_listening;
+      followUp.current = false;
       listen();
     }
   }, [state, listen, voice, settings.keep_listening]);
@@ -98,9 +106,8 @@ export function useConversation() {
     send(t, 'text');
   }, [send, voice]);
 
-  const micLevel = useWebMicLevel(state === 'listening' && Platform.OS === 'web');
   const speakLevel = useSpeakingLevel(state === 'speaking');
-  const level = state === 'listening' ? (Platform.OS === 'web' ? micLevel : voice.level) : state === 'speaking' ? speakLevel : 0;
+  const level = state === 'listening' ? voice.level : state === 'speaking' ? speakLevel : 0;
 
   return { state, level, partial: voice.partial, turn, notice: notice || voice.error, tap, stop, sendText, supported: voice.state !== 'unsupported' };
 }

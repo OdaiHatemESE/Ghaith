@@ -27,13 +27,17 @@ function available(): boolean {
   }
 }
 
-/** Press to talk: `start()` listens until the person stops speaking (or `stop()`), then calls `onFinal` with the text */
+/**
+ * Press to talk: `start()` listens until the person stops speaking (or `stop()`), then calls `onFinal` with the text,
+ * or `onSilent` when nothing was understood. `level` (0..1) follows the voice so the orb can move with it.
+ */
 export function useVoice(onFinal: (text: string) => void, onSilent: () => void = () => {}) {
   const [state, setState] = useState<VoiceState>(() => (available() ? 'idle' : 'unsupported'));
   const [partial, setPartial] = useState('');
   const [error, setError] = useState('');
   const [level, setLevel] = useState(0);
   const text = useRef('');
+  const delivered = useRef(false);
   const done = useRef(onFinal);
   const silent = useRef(onSilent);
   useEffect(() => {
@@ -41,12 +45,34 @@ export function useVoice(onFinal: (text: string) => void, onSilent: () => void =
     silent.current = onSilent;
   }, [onFinal, onSilent]);
 
+  /** Hands the heard sentence over exactly once per listening session */
+  const finish = useCallback(() => {
+    if (delivered.current) return;
+    delivered.current = true;
+    const t = text.current.trim();
+    text.current = '';
+    setPartial('');
+    setLevel(0);
+    if (t) done.current(t);
+    else silent.current();
+  }, []);
+
   useSpeechRecognitionEvent('start', () => setState('listening'));
   useSpeechRecognitionEvent('result', (e) => {
     const t = e.results[0]?.transcript ?? '';
     if (t) {
       text.current = t;
       setPartial(t);
+      // Browsers give no loudness: words arriving are the sign of a voice
+      if (Platform.OS === 'web') setLevel(0.45 + Math.random() * 0.45);
+    }
+    if (e.isFinal && t) {
+      finish();
+      try {
+        ExpoSpeechRecognitionModule.stop();
+      } catch {
+        // already stopped
+      }
     }
   });
   useSpeechRecognitionEvent('volumechange', (e) => setLevel(Math.max(0, Math.min(1, (e.value + 2) / 12))));
@@ -58,45 +84,58 @@ export function useVoice(onFinal: (text: string) => void, onSilent: () => void =
   });
   useSpeechRecognitionEvent('end', () => {
     setState(available() ? 'idle' : 'unsupported');
-    setLevel(0);
-    const t = text.current.trim();
-    text.current = '';
-    setPartial('');
-    if (t) done.current(t);
-    else silent.current();
+    finish();
   });
+
+  // On web the level fades back down between words
+  useEffect(() => {
+    if (Platform.OS !== 'web' || state !== 'listening') return;
+    const i = setInterval(() => setLevel((l) => (l > 0.05 ? l * 0.7 : 0.05)), 120);
+    return () => clearInterval(i);
+  }, [state]);
+
+  const begin = useCallback(() => {
+    ExpoSpeechRecognitionModule.start({
+      lang: 'ar-AE',
+      interimResults: true,
+      continuous: false,
+      maxAlternatives: 1,
+      contextualStrings: ['غيث', 'ذكرني', 'أجّل', 'خلصت', 'إيميل', 'المدير'],
+      volumeChangeEventOptions: { enabled: true, intervalMillis: 120 },
+      androidIntentOptions: {
+        // Allow a natural pause mid-sentence before deciding the person has finished
+        EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 2200,
+        EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 2200,
+      },
+      iosTaskHint: 'dictation',
+    });
+    setState('listening');
+  }, []);
 
   const start = useCallback(async () => {
     setError('');
     text.current = '';
+    delivered.current = false;
     setPartial('');
     stopSpeaking();
     try {
+      // Browsers: start right away, inside the tap, or they refuse the microphone
+      if (Platform.OS === 'web') return begin();
       const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!perm.granted) {
         setError(ERRORS['not-allowed']);
+        delivered.current = true;
+        silent.current();
         return;
       }
-      ExpoSpeechRecognitionModule.start({
-        lang: 'ar-AE',
-        interimResults: true,
-        continuous: false,
-        maxAlternatives: 1,
-        contextualStrings: ['غيث', 'ذكرني', 'أجّل', 'خلصت', 'إيميل', 'المدير'],
-        volumeChangeEventOptions: { enabled: true, intervalMillis: 120 },
-        androidIntentOptions: {
-          // Allow a natural pause mid-sentence before deciding the person has finished
-          EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 2200,
-          EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 2200,
-        },
-        iosTaskHint: 'dictation',
-      });
-      setState('listening');
+      begin();
     } catch {
       setError('ما قدرت أشغّل المايك.');
       setState(available() ? 'idle' : 'unsupported');
+      delivered.current = true;
+      silent.current();
     }
-  }, []);
+  }, [begin]);
 
   /** Stops listening and sends what was heard */
   const stop = useCallback(() => {
@@ -105,19 +144,32 @@ export function useVoice(onFinal: (text: string) => void, onSilent: () => void =
     } catch {
       // already stopped
     }
-  }, []);
+    // Some browsers never send "end" after a manual stop
+    setTimeout(finish, 1500);
+  }, [finish]);
 
   /** Stops listening and drops what was heard */
   const cancel = useCallback(() => {
     text.current = '';
+    delivered.current = true;
+    try {
+      ExpoSpeechRecognitionModule.abort();
+    } catch {
+      // already stopped
+    }
+    setPartial('');
+    setLevel(0);
+    setState(available() ? 'idle' : 'unsupported');
+  }, []);
+
+  useEffect(() => () => {
+    delivered.current = true;
     try {
       ExpoSpeechRecognitionModule.abort();
     } catch {
       // already stopped
     }
   }, []);
-
-  useEffect(() => () => cancel(), [cancel]);
 
   return { state, partial, error, level, start, stop, cancel, clearError: () => setError('') };
 }
