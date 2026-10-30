@@ -4,7 +4,7 @@
 //
 // With `speak`, the reply also comes back as audio in غيث's voice (see ../_shared/tts.ts).
 //
-// Secrets: ANTHROPIC_API_KEY (required), GHAITH_MODEL (optional, default below), AZURE_SPEECH_KEY + AZURE_SPEECH_REGION (voice).
+// Secrets: ANTHROPIC_API_KEY (required), GHAITH_MODEL (optional, default below), GEMINI_API_KEY (voice; see ../_shared/tts.ts).
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { speakArabic } from '../_shared/tts.ts';
 
@@ -374,6 +374,6 @@ Deno.serve(async (req) => {
     { role: 'assistant', content: answer, actions },
   ]);
 
-  const audio = body.speak && body.voice !== 'device' ? await speakArabic(answer, body.voice) : null;
-  return reply(200, { reply: answer, actions, end, audio, model: MODEL });
+  const speech = body.speak ? await speakArabic(answer, body.voice) : null;
+  return reply(200, { reply: answer, actions, end, audio: speech?.audio ?? null, audio_type: speech?.type ?? null, model: MODEL });
 });

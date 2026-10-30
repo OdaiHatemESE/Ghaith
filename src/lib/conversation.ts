@@ -28,7 +28,7 @@ export function useConversation() {
         if (a.end) loop.current = false;
         if (speak && a.reply) {
           setState('speaking');
-          playReply(a.reply, a.audio, () => {
+          playReply(a.reply, a.audio, a.audioType, () => {
             if (loop.current && source === 'voice') listenRef.current();
             else setState('idle');
           });

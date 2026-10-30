@@ -11,7 +11,7 @@ export type Message = { id: number; role: 'user' | 'assistant'; content: string;
 export type Voice = 'hamdan' | 'fatima' | 'device';
 export type Settings = { morning_time: string | null; evening_time: string | null; speak_replies: boolean; follow_up_days: number; voice: Voice; keep_listening: boolean };
 export const DEFAULT_SETTINGS: Settings = { morning_time: '08:00', evening_time: '20:00', speak_replies: true, follow_up_days: 3, voice: 'hamdan', keep_listening: true };
-export type Answer = { reply: string; actions: Action[]; end: boolean; audio: string | null };
+export type Answer = { reply: string; actions: Action[]; end: boolean; audio: string | null; audioType: string | null };
 
 type Status = 'loading' | 'out' | 'in';
 
@@ -135,7 +135,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         throw new Error(message);
       }
       await Promise.all([loadTasks(), loadMessages()]);
-      return { reply: String(data?.reply ?? ''), actions: (data?.actions ?? []) as Action[], end: !!data?.end, audio: data?.audio ?? null };
+      return { reply: String(data?.reply ?? ''), actions: (data?.actions ?? []) as Action[], end: !!data?.end, audio: data?.audio ?? null, audioType: data?.audio_type ?? null };
     },
     [loadTasks, loadMessages, settings.voice],
   );

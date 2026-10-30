@@ -27,8 +27,8 @@ const EVENING: [string | null, string][] = [
 ];
 const FOLLOW = [1, 2, 3, 5, 7];
 const VOICES: [Voice, string][] = [
-  ['hamdan', 'حمدان'],
-  ['fatima', 'فاطمة'],
+  ['hamdan', 'صوت رجالي'],
+  ['fatima', 'صوت نسائي'],
   ['device', 'صوت الجهاز'],
 ];
 
@@ -55,10 +55,10 @@ export default function Settings() {
   const tryVoice = async (v: Voice) => {
     saveSettings({ voice: v });
     const line = `أهلين${name ? ' ' + name : ''}، أنا غيث. احكيلي شو عندك وأنا برتّبه وبذكّرك فيه.`;
-    if (v === 'device') return playReply(line, null);
+    if (v === 'device') return playReply(line, null, null);
     const { data } = await supabase.functions.invoke('ghaith-tts', { body: { text: line, voice: v } });
     setVoiceNote(data?.configured === false ? 'الصوت الطبيعي لسا مش مفعّل على السيرفر، فهلأ بتسمع صوت الجهاز.' : '');
-    playReply(line, data?.audio ?? null);
+    playReply(line, data?.audio ?? null, data?.audio_type ?? null);
   };
 
   const permText =

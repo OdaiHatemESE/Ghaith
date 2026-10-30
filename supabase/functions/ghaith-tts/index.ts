@@ -21,6 +21,6 @@ Deno.serve(async (req) => {
   let body: { text?: string; voice?: string } = {};
   try { body = await req.json(); } catch { /* empty */ }
   if (!ttsConfigured()) return reply(200, { audio: null, configured: false });
-  const audio = await speakArabic(String(body.text ?? '').slice(0, 400), body.voice);
-  return reply(200, { audio, configured: true });
+  const speech = await speakArabic(String(body.text ?? '').slice(0, 400), body.voice);
+  return reply(200, { audio: speech?.audio ?? null, audio_type: speech?.type ?? null, configured: true });
 });

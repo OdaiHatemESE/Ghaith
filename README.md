@@ -9,13 +9,13 @@
 - **الصوت:** تحويل الكلام لنص على الجهاز نفسه (`expo-speech-recognition`، وعلى المتصفح Web Speech API). بس النص بيروح لغيث.
 - **العقل:** دالة `supabase/functions/ghaith-agent` بتعطي Claude أدوات (إضافة، تعديل، إنهاء، حذف، بحث) وبتنفّذها كالمستخدم نفسه (RLS).
 - **التذكير:** إشعارات محلية على الجوال من قائمة المهام: تذكير كل مهمة (مع أزرار خلصت / بعد ساعة / بكرة الصبح)، ملخص الصبح، ومراجعة المسا.
-- **الرد بالصوت:** أصوات Azure الإماراتية (حمدان أو فاطمة) من `supabase/functions/_shared/tts.ts`، ولو مش مفعّلة بيرجع لصوت الجهاز.
+- **الرد بالصوت:** Gemini TTS (نفس مفتاح Gemini تبع قديش) بلكنة خليجية، صوت رجالي أو نسائي، من `supabase/functions/_shared/tts.ts`. Azure بديل اختياري، ولو ما في ولا واحد بيرجع لصوت الجهاز.
 
 ## قاعدة البيانات
 داخل مشروع Supabase تبع قديش (`familypocket`) بجداول منفصلة فقط: `ghaith_tasks`، `ghaith_messages`، `ghaith_settings`، والدالة `ghaith_complete_task`. ولا شيء من غيث بيكتب على جداول قديش. الدخول بنفس حسابات قديش.
 
 - الـ migration: `supabase/migrations/0001_ghaith.sql` و`0002_ghaith_voice.sql`
-- أسرار الدوال: `ANTHROPIC_API_KEY` (موجود بالمشروع)، `AZURE_SPEECH_KEY` و`AZURE_SPEECH_REGION` للصوت الطبيعي، و`GHAITH_MODEL` اختياري (الافتراضي `claude-haiku-5-5`).
+- أسرار الدوال: `ANTHROPIC_API_KEY` (موجود بالمشروع)، `GEMINI_API_KEY` للصوت الطبيعي (موجود)، و`AZURE_SPEECH_KEY` + `AZURE_SPEECH_REGION` اختياري، و`GHAITH_MODEL` اختياري (الافتراضي `claude-haiku-5-5`).
 
 ## التجربة
 - **رابط الويب:** https://odaihatemese.github.io/Ghaith/ — كل push على `main` بينشر نسخة على GitHub Pages (`.github/workflows/web-preview.yml`). الإشعارات ما بتشتغل على المتصفح.

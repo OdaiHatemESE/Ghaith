@@ -149,10 +149,10 @@ function speakWithDevice(text: string, onDone: () => void) {
 }
 
 /**
- * Plays غيث's reply: the natural UAE voice when the server sent audio (base64 MP3), otherwise the device voice.
+ * Plays غيث's reply: the natural voice when the server sent audio (base64 WAV or MP3), otherwise the device voice.
  * Calls `onDone` once when it finishes or is stopped.
  */
-export function playReply(text: string, audio: string | null | undefined, onDone: () => void = () => {}) {
+export function playReply(text: string, audio: string | null | undefined, type: string | null = 'audio/mpeg', onDone: () => void = () => {}) {
   stopSpeaking();
   let finished = false;
   const done = () => {
@@ -165,7 +165,7 @@ export function playReply(text: string, audio: string | null | undefined, onDone
 
   if (Platform.OS === 'web') {
     const AudioEl = (globalThis as unknown as { Audio: new (src: string) => HTMLAudioElement }).Audio;
-    const el = new AudioEl(`data:audio/mpeg;base64,${audio}`);
+    const el = new AudioEl(`data:${type || 'audio/mpeg'};base64,${audio}`);
     el.onended = done;
     el.onerror = () => speakWithDevice(text, done);
     el.play().catch(() => speakWithDevice(text, done));
@@ -173,7 +173,7 @@ export function playReply(text: string, audio: string | null | undefined, onDone
     return;
   }
   try {
-    const file = new File(Paths.cache, `ghaith-reply-${Date.now()}.mp3`);
+    const file = new File(Paths.cache, `ghaith-reply-${Date.now()}.${type === 'audio/wav' ? 'wav' : 'mp3'}`);
     file.write(audio, { encoding: 'base64' });
     const player = createAudioPlayer(file.uri);
     const sub = player.addListener('playbackStatusUpdate', (st) => {
