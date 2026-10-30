@@ -17,7 +17,7 @@
 - أسرار الدالة: `ANTHROPIC_API_KEY` (موجود بالمشروع)، و`GHAITH_MODEL` اختياري (الافتراضي `claude-haiku-5-5`).
 
 ## التجربة
-- **رابط الويب:** كل push على `main` بينشر نسخة على GitHub Pages (`.github/workflows/web-preview.yml`). الإشعارات ما بتشتغل على المتصفح.
+- **رابط الويب:** https://odaihatemese.github.io/Ghaith/ — كل push على `main` بينشر نسخة على GitHub Pages (`.github/workflows/web-preview.yml`). الإشعارات ما بتشتغل على المتصفح.
 - **APK:** يدوي فقط، من Actions ← Build Android APK ← Run workflow. بينزل على Releases.
 
 ## التطوير
