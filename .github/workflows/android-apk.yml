@@ -1,0 +1,58 @@
+name: Build Android APK
+
+# Runs only when started by hand (Actions → Build Android APK → Run workflow)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate native Android project
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Give Gradle more memory
+        run: |
+          sed -i '/^org.gradle.jvmargs/d' android/gradle.properties
+          # The file may not end with a newline: start on a fresh line, or the setting joins the last one
+          printf '\norg.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8\n' >> android/gradle.properties
+          tail -3 android/gradle.properties
+
+      # Phones in use are 64-bit ARM: building only that architecture is several times faster
+      - name: Build release APK
+        timeout-minutes: 45
+        run: |
+          cd android
+          set -o pipefail
+          ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a --console=plain --stacktrace 2>&1 | tee ../build.log || {
+            # Readable through the API without log access: the error as annotations
+            # GitHub keeps only 10 annotations per step: the last 90 lines go in one
+            echo "::error::$(grep -n -E 'Caused by|Exception|at expo\.|at com\.facebook|ExpoUpdates|expo\.modules|@build-script-error|Error:' ../build.log | head -50 | tr '\n' '~' | sed 's/~/ ⏎ /g')"
+            echo "::error::$(tail -90 ../build.log | sed 's/\x1b\[[0-9;]*m//g' | tr '\n' '~' | sed 's/~/ ⏎ /g')"
+            exit 1
+          }
+
+      - name: Publish APK as a GitHub release (downloadable from the phone)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: غيث - نسخة ${{ github.run_number }}
+          files: android/app/build/outputs/apk/release/app-release.apk
