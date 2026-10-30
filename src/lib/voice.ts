@@ -1,5 +1,7 @@
 // Talking to غيث: speech to text on the phone (Android/iOS speech services, or the browser's on web),
 // and غيث's replies read aloud. Nothing is recorded or stored; only the final text is sent to غيث.
+import { createAudioPlayer } from 'expo-audio';
+import { File, Paths } from 'expo-file-system';
 import * as Speech from 'expo-speech';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -26,16 +28,18 @@ function available(): boolean {
 }
 
 /** Press to talk: `start()` listens until the person stops speaking (or `stop()`), then calls `onFinal` with the text */
-export function useVoice(onFinal: (text: string) => void) {
+export function useVoice(onFinal: (text: string) => void, onSilent: () => void = () => {}) {
   const [state, setState] = useState<VoiceState>(() => (available() ? 'idle' : 'unsupported'));
   const [partial, setPartial] = useState('');
   const [error, setError] = useState('');
   const [level, setLevel] = useState(0);
   const text = useRef('');
   const done = useRef(onFinal);
+  const silent = useRef(onSilent);
   useEffect(() => {
     done.current = onFinal;
-  }, [onFinal]);
+    silent.current = onSilent;
+  }, [onFinal, onSilent]);
 
   useSpeechRecognitionEvent('start', () => setState('listening'));
   useSpeechRecognitionEvent('result', (e) => {
@@ -59,13 +63,14 @@ export function useVoice(onFinal: (text: string) => void) {
     text.current = '';
     setPartial('');
     if (t) done.current(t);
+    else silent.current();
   });
 
   const start = useCallback(async () => {
     setError('');
     text.current = '';
     setPartial('');
-    Speech.stop();
+    stopSpeaking();
     try {
       const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!perm.granted) {
@@ -117,16 +122,83 @@ export function useVoice(onFinal: (text: string) => void) {
   return { state, partial, error, level, start, stop, cancel, clearError: () => setError('') };
 }
 
-/** Reads غيث's reply aloud in Arabic */
-export function speak(text: string, onDone?: () => void) {
-  Speech.stop();
-  Speech.speak(text, {
-    language: Platform.OS === 'ios' ? 'ar-SA' : 'ar',
-    rate: Platform.OS === 'web' ? 1 : 1.02,
-    onDone,
-    onStopped: onDone,
-    onError: onDone,
-  });
+// ---------- غيث's voice ----------
+let current: { stop: () => void } | null = null;
+let deviceVoice: string | undefined | null = null;
+
+/** The best Arabic voice the phone or browser has (UAE, then Gulf, then any Arabic) */
+async function pickDeviceVoice(): Promise<string | undefined> {
+  if (deviceVoice !== null) return deviceVoice;
+  try {
+    const voices = await Speech.getAvailableVoicesAsync();
+    const ar = voices.filter((v) => v.language?.toLowerCase().startsWith('ar'));
+    const rank = (l: string) => ['ar-ae', 'ar-sa', 'ar-kw', 'ar-qa', 'ar-jo', 'ar-eg', 'ar'].findIndex((p) => l.toLowerCase().startsWith(p));
+    ar.sort((a, b) => (rank(a.language) - rank(b.language)) || (a.quality === 'Enhanced' ? -1 : 1));
+    deviceVoice = ar[0]?.identifier;
+  } catch {
+    deviceVoice = undefined;
+  }
+  return deviceVoice ?? undefined;
 }
 
-export const stopSpeaking = () => Speech.stop();
+function speakWithDevice(text: string, onDone: () => void) {
+  pickDeviceVoice().then((voice) => {
+    Speech.speak(text, { language: 'ar', voice, rate: 1, onDone, onStopped: onDone, onError: onDone });
+  });
+  current = { stop: () => Speech.stop() };
+}
+
+/**
+ * Plays غيث's reply: the natural UAE voice when the server sent audio (base64 MP3), otherwise the device voice.
+ * Calls `onDone` once when it finishes or is stopped.
+ */
+export function playReply(text: string, audio: string | null | undefined, onDone: () => void = () => {}) {
+  stopSpeaking();
+  let finished = false;
+  const done = () => {
+    if (finished) return;
+    finished = true;
+    current = null;
+    onDone();
+  };
+  if (!audio) return speakWithDevice(text, done);
+
+  if (Platform.OS === 'web') {
+    const AudioEl = (globalThis as unknown as { Audio: new (src: string) => HTMLAudioElement }).Audio;
+    const el = new AudioEl(`data:audio/mpeg;base64,${audio}`);
+    el.onended = done;
+    el.onerror = () => speakWithDevice(text, done);
+    el.play().catch(() => speakWithDevice(text, done));
+    current = { stop: () => (el.pause(), done()) };
+    return;
+  }
+  try {
+    const file = new File(Paths.cache, `ghaith-reply-${Date.now()}.mp3`);
+    file.write(audio, { encoding: 'base64' });
+    const player = createAudioPlayer(file.uri);
+    const sub = player.addListener('playbackStatusUpdate', (st) => {
+      if (st.didJustFinish) {
+        sub.remove();
+        player.remove();
+        done();
+      }
+    });
+    player.play();
+    current = {
+      stop: () => {
+        sub.remove();
+        player.remove();
+        done();
+      },
+    };
+  } catch {
+    speakWithDevice(text, done);
+  }
+}
+
+export function stopSpeaking() {
+  const c = current;
+  current = null;
+  c?.stop();
+  Speech.stop();
+}

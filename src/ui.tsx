@@ -5,7 +5,7 @@ import { C, F, TS } from './theme';
 
 type Weight = 'regular' | 'medium' | 'semibold' | 'bold';
 
-/** Arabic text: Plex font, right aligned, RTL bidi */
+/** Arabic text: Readex Pro, right aligned, RTL bidi */
 export function T({
   w = 'regular',
   size = TS.body,
@@ -17,7 +17,7 @@ export function T({
   return (
     <Text
       {...rest}
-      style={[{ fontFamily: F[w], fontSize: size, color, textAlign: align, writingDirection: 'rtl', lineHeight: Math.round(size * 1.55) }, style]}
+      style={[{ fontFamily: F[w], fontSize: size, color, textAlign: align, writingDirection: 'rtl', lineHeight: Math.round(size * 1.6) }, style]}
     />
   );
 }
@@ -28,8 +28,19 @@ export function Icon({ name, size = 22, color = C.text }: { name: IconName; size
   return <MaterialCommunityIcons name={name} size={size} color={color} />;
 }
 
-export function Row({ style, children }: { style?: StyleProp<ViewStyle>; children: React.ReactNode }) {
-  return <View style={[{ flexDirection: 'row-reverse', alignItems: 'center' }, style]}>{children}</View>;
+/** Round icon button for headers */
+export function IconButton({ icon, onPress, label, size = 42 }: { icon: IconName; onPress: () => void; label: string; size?: number }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityLabel={label}
+      accessibilityRole="button"
+      hitSlop={6}
+      style={({ pressed }) => ({ width: size, height: size, borderRadius: size / 2, backgroundColor: pressed ? C.surfaceHi : C.surface, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center' })}
+    >
+      <Icon name={icon} size={size * 0.48} color={C.sub} />
+    </Pressable>
+  );
 }
 
 /** Horizontal scroller that starts from the right edge (RTL) */
@@ -48,19 +59,7 @@ export function HScroll({ children, gap = 8, style }: { children: React.ReactNod
   );
 }
 
-export function Chip({
-  label,
-  on,
-  onPress,
-  icon,
-  color = C.night,
-}: {
-  label: string;
-  on: boolean;
-  onPress: () => void;
-  icon?: IconName;
-  color?: string;
-}) {
+export function Chip({ label, on, onPress, icon, color = C.accent }: { label: string; on: boolean; onPress: () => void; icon?: IconName; color?: string }) {
   return (
     <Pressable
       onPress={onPress}
@@ -71,49 +70,56 @@ export function Chip({
         alignItems: 'center',
         gap: 6,
         paddingHorizontal: 13,
-        paddingVertical: 7,
-        borderRadius: 999,
-        backgroundColor: on ? color : C.surface,
+        paddingVertical: 8,
+        borderRadius: 12,
+        backgroundColor: on ? color + '2A' : C.surface,
         borderWidth: 1,
         borderColor: on ? color : C.line,
       }}
     >
-      {icon && <Icon name={icon} size={15} color={on ? '#fff' : color} />}
-      <T size={TS.small} w={on ? 'semibold' : 'regular'} color={on ? '#fff' : C.text}>{label}</T>
+      {icon && <Icon name={icon} size={15} color={on ? color : C.sub} />}
+      <T size={TS.small} w={on ? 'semibold' : 'regular'} color={on ? C.text : C.sub}>{label}</T>
     </Pressable>
   );
 }
 
-export function PrimaryButton({
-  label,
-  onPress,
-  tone = 'rain',
-  busy = false,
-  disabled = false,
-  icon,
-}: {
-  label: string;
-  onPress: () => void;
-  tone?: 'rain' | 'night' | 'ok' | 'late';
-  busy?: boolean;
-  disabled?: boolean;
-  icon?: IconName;
-}) {
-  const bg = { rain: C.rain, night: C.night, ok: C.ok, late: C.late }[tone];
+/** Two or three options in one rounded track */
+export function Segmented<K extends string>({ value, options, onChange }: { value: K; options: [K, string][]; onChange: (k: K) => void }) {
+  return (
+    <View style={{ flexDirection: 'row-reverse', backgroundColor: C.surface, borderRadius: 14, padding: 4, borderWidth: 1, borderColor: C.line }}>
+      {options.map(([k, label]) => {
+        const on = k === value;
+        return (
+          <Pressable
+            key={k}
+            onPress={() => onChange(k)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            style={{ flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: on ? C.surfaceHi : 'transparent', alignItems: 'center' }}
+          >
+            <T size={TS.small} w={on ? 'semibold' : 'regular'} color={on ? C.text : C.sub} align="center">{label}</T>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+export function PrimaryButton({ label, onPress, busy = false, disabled = false, icon, tone = 'accent' }: { label: string; onPress: () => void; busy?: boolean; disabled?: boolean; icon?: IconName; tone?: 'accent' | 'late' }) {
   return (
     <Pressable
       onPress={busy || disabled ? undefined : onPress}
       accessibilityRole="button"
       accessibilityState={{ busy, disabled }}
       style={({ pressed }) => ({
-        backgroundColor: bg,
+        backgroundColor: tone === 'late' ? C.late : C.accent,
         borderRadius: 16,
         paddingVertical: 15,
         flexDirection: 'row-reverse',
         justifyContent: 'center',
         alignItems: 'center',
         gap: 8,
-        opacity: disabled ? 0.45 : pressed || busy ? 0.82 : 1,
+        opacity: disabled ? 0.4 : pressed || busy ? 0.85 : 1,
       })}
     >
       {busy ? (
@@ -121,7 +127,7 @@ export function PrimaryButton({
       ) : (
         <>
           {icon && <Icon name={icon} size={20} color="#fff" />}
-          <T w="bold" size={16} color="#fff" align="center">{label}</T>
+          <T w="semibold" size={16} color="#fff" align="center">{label}</T>
         </>
       )}
     </Pressable>
@@ -137,7 +143,9 @@ export function GhostButton({ label, onPress, icon, color = C.text }: { label: s
         flex: 1,
         borderRadius: 14,
         paddingVertical: 12,
-        backgroundColor: pressed ? C.line : C.paper,
+        backgroundColor: pressed ? C.surfaceHi : C.surface,
+        borderWidth: 1,
+        borderColor: C.line,
         flexDirection: 'row-reverse',
         alignItems: 'center',
         justifyContent: 'center',
@@ -145,7 +153,7 @@ export function GhostButton({ label, onPress, icon, color = C.text }: { label: s
       })}
     >
       {icon && <Icon name={icon} size={18} color={color} />}
-      <T w="semibold" size={TS.small} color={color}>{label}</T>
+      <T w="medium" size={TS.small} color={color}>{label}</T>
     </Pressable>
   );
 }
@@ -165,7 +173,7 @@ export function Field({
   autoComplete,
   maxLength,
 }: {
-  label: string;
+  label?: string;
   value: string;
   onChangeText: (t: string) => void;
   placeholder?: string;
@@ -180,9 +188,9 @@ export function Field({
 }) {
   const [hidden, setHidden] = React.useState(true);
   return (
-    <View style={{ marginTop: 14 }}>
-      <T w="semibold" size={TS.small} color={C.sub} style={{ marginBottom: 6 }}>{label}</T>
-      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: C.paper, borderRadius: 14, borderWidth: 1, borderColor: C.line }}>
+    <View style={{ marginTop: label ? 14 : 0 }}>
+      {!!label && <T w="medium" size={TS.small} color={C.sub} style={{ marginBottom: 6 }}>{label}</T>}
+      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: C.surface, borderRadius: 14, borderWidth: 1, borderColor: C.line }}>
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -197,7 +205,7 @@ export function Field({
           returnKeyType={returnKeyType}
           autoComplete={autoComplete}
           maxLength={maxLength}
-          accessibilityLabel={label}
+          accessibilityLabel={label ?? placeholder}
           style={{
             flex: 1,
             minWidth: 0,
@@ -208,8 +216,8 @@ export function Field({
             textAlign: 'right',
             writingDirection: ltr ? 'ltr' : 'rtl',
             paddingHorizontal: 14,
-            paddingVertical: 12,
-            minHeight: multiline ? 72 : undefined,
+            paddingVertical: 13,
+            minHeight: multiline ? 76 : undefined,
             textAlignVertical: multiline ? 'top' : 'center',
           }}
         />
@@ -224,13 +232,13 @@ export function Field({
 }
 
 export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
-  return <View style={[{ backgroundColor: C.surface, borderRadius: 20, overflow: 'hidden' }, style]}>{children}</View>;
+  return <View style={[{ backgroundColor: C.surface, borderRadius: 20, borderWidth: 1, borderColor: C.line, overflow: 'hidden' }, style]}>{children}</View>;
 }
 
 export function ErrorText({ text }: { text: string }) {
   if (!text) return null;
   return (
-    <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: C.lateWash, borderRadius: 12, padding: 10, marginTop: 14 }}>
+    <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: C.lateSoft, borderRadius: 12, padding: 10, marginTop: 14 }}>
       <Icon name="alert-circle-outline" size={18} color={C.late} />
       <T size={TS.small} color={C.late} style={{ flex: 1 }}>{text}</T>
     </View>
@@ -238,38 +246,20 @@ export function ErrorText({ text }: { text: string }) {
 }
 
 export function Label({ children }: { children: string }) {
-  return <T w="semibold" size={TS.small} color={C.sub} style={{ marginTop: 18, marginBottom: 8 }}>{children}</T>;
+  return <T w="medium" size={TS.small} color={C.sub} style={{ marginTop: 18, marginBottom: 8 }}>{children}</T>;
 }
 
 /** Settings-style row: icon, title, optional detail, and something on the left */
-export function ListRow({
-  icon,
-  iconColor = C.rain,
-  title,
-  detail,
-  onPress,
-  last,
-  danger,
-  right,
-}: {
-  icon?: IconName;
-  iconColor?: string;
-  title: string;
-  detail?: string;
-  onPress?: () => void;
-  last?: boolean;
-  danger?: boolean;
-  right?: React.ReactNode;
-}) {
-  const tint = danger ? C.late : iconColor;
+export function ListRow({ icon, title, detail, onPress, last, danger, right }: { icon?: IconName; title: string; detail?: string; onPress?: () => void; last?: boolean; danger?: boolean; right?: React.ReactNode }) {
+  const tint = danger ? C.late : C.accent;
   return (
     <Pressable
       onPress={onPress}
       disabled={!onPress}
-      style={({ pressed }) => ({ flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, backgroundColor: pressed ? C.paper : 'transparent' })}
+      style={({ pressed }) => ({ flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, backgroundColor: pressed ? C.surfaceHi : 'transparent' })}
     >
       {icon && (
-        <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: tint + '1A', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: tint + '22', alignItems: 'center', justifyContent: 'center' }}>
           <Icon name={icon} size={19} color={tint} />
         </View>
       )}
@@ -279,6 +269,22 @@ export function ListRow({
       </View>
       {right}
       {!last && <View style={{ position: 'absolute', bottom: 0, left: 16, right: icon ? 64 : 16, height: 1, backgroundColor: C.line }} />}
+    </Pressable>
+  );
+}
+
+/** On/off switch drawn the same on every platform */
+export function Toggle({ value, onChange, label }: { value: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <Pressable
+      onPress={() => onChange(!value)}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value }}
+      accessibilityLabel={label}
+      hitSlop={8}
+      style={{ width: 48, height: 28, borderRadius: 14, padding: 3, backgroundColor: value ? C.accent : C.lineHi, flexDirection: 'row', justifyContent: value ? 'flex-start' : 'flex-end' }}
+    >
+      <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff' }} />
     </Pressable>
   );
 }

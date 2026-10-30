@@ -5,16 +5,17 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ghaith.app"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0D1B2E",
+        "backgroundColor": "#070B14",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "monochromeImage": "./assets/android-icon-monochrome.png",
+        "backgroundImage": "./assets/android-icon-background.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.ghaith.app"
@@ -33,7 +34,7 @@
         {
           "image": "./assets/splash-icon.png",
           "imageWidth": 160,
-          "backgroundColor": "#0D1B2E",
+          "backgroundColor": "#070B14",
           "resizeMode": "contain"
         }
       ],
@@ -41,7 +42,7 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#2366E8"
+          "color": "#5B7CFF"
         }
       ],
       [
@@ -49,7 +50,10 @@
         {
           "microphonePermission": "غيث بيحتاج المايك عشان تحكي معه وتعطيه مهامك بالصوت.",
           "speechRecognitionPermission": "غيث بيحوّل كلامك لنص عشان يفهم المهام.",
-          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox", "com.google.android.tts"]
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.tts"
+          ]
         }
       ]
     ],

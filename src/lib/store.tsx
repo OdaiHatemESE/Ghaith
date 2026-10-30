@@ -8,8 +8,10 @@ import { Task, TASK_FIELDS } from './tasks';
 
 export type Action = { type: 'added' | 'updated' | 'done' | 'deleted' | 'reopened'; id: string; title: string };
 export type Message = { id: number; role: 'user' | 'assistant'; content: string; actions: Action[]; created_at: string };
-export type Settings = { morning_time: string | null; evening_time: string | null; speak_replies: boolean; follow_up_days: number };
-export const DEFAULT_SETTINGS: Settings = { morning_time: '08:00', evening_time: '20:00', speak_replies: true, follow_up_days: 3 };
+export type Voice = 'hamdan' | 'fatima' | 'device';
+export type Settings = { morning_time: string | null; evening_time: string | null; speak_replies: boolean; follow_up_days: number; voice: Voice; keep_listening: boolean };
+export const DEFAULT_SETTINGS: Settings = { morning_time: '08:00', evening_time: '20:00', speak_replies: true, follow_up_days: 3, voice: 'hamdan', keep_listening: true };
+export type Answer = { reply: string; actions: Action[]; end: boolean; audio: string | null };
 
 type Status = 'loading' | 'out' | 'in';
 
@@ -24,7 +26,7 @@ type Store = {
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   /** Sends what the user said to غيث; resolves with غيث's reply (or throws a readable error) */
-  ask: (text: string, source: 'voice' | 'text') => Promise<{ reply: string; actions: Action[] }>;
+  ask: (text: string, source: 'voice' | 'text', speak?: boolean) => Promise<Answer>;
   complete: (id: string) => Promise<void>;
   reopen: (id: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
@@ -85,7 +87,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     // The state updates happen after the network calls resolve, not synchronously in this effect
     // eslint-disable-next-line react-hooks/set-state-in-effect
     Promise.all([loadTasks(), loadMessages()]).then(() => setLoaded(true));
-    supabase.from('ghaith_settings').select('morning_time,evening_time,speak_replies,follow_up_days').maybeSingle().then(({ data }) => {
+    supabase.from('ghaith_settings').select('morning_time,evening_time,speak_replies,follow_up_days,voice,keep_listening').maybeSingle().then(({ data }) => {
       if (data) setSettings({ ...DEFAULT_SETTINGS, ...data, morning_time: data.morning_time?.slice(0, 5) ?? null, evening_time: data.evening_time?.slice(0, 5) ?? null });
     });
     supabase.from('profiles').select('display_name,username').eq('id', userId).maybeSingle().then(({ data }) => {
@@ -115,11 +117,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const ask = useCallback(
-    async (text: string, source: 'voice' | 'text') => {
+    async (text: string, source: 'voice' | 'text', speak = false): Promise<Answer> => {
       // Show what was said right away, the reply follows
       const temp: Message = { id: -Date.now(), role: 'user', content: text, actions: [], created_at: new Date().toISOString() };
       setMessages((m) => [...m, temp]);
-      const { data, error } = await supabase.functions.invoke('ghaith-agent', { body: { text, source } });
+      const { data, error } = await supabase.functions.invoke('ghaith-agent', { body: { text, source, speak, voice: settings.voice } });
       if (error) {
         setMessages((m) => m.filter((x) => x.id !== temp.id));
         let message = 'ما قدرت أوصل لغيث، تأكد من الإنترنت وجرّب كمان مرة.';
@@ -133,9 +135,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         throw new Error(message);
       }
       await Promise.all([loadTasks(), loadMessages()]);
-      return { reply: String(data?.reply ?? ''), actions: (data?.actions ?? []) as Action[] };
+      return { reply: String(data?.reply ?? ''), actions: (data?.actions ?? []) as Action[], end: !!data?.end, audio: data?.audio ?? null };
     },
-    [loadTasks, loadMessages],
+    [loadTasks, loadMessages, settings.voice],
   );
 
   const patchLocal = (id: string, fields: Partial<Task>) => setTasks((list) => list.map((t) => (t.id === id ? { ...t, ...fields } : t)));

@@ -1,36 +1,41 @@
-// "غيث" palette: the night sky before rain (deep navy ink), cool paper, and a rain-blue accent.
-// Kinds and categories each get their own hue so a task can be read at a glance while driving.
+// غيث: a calm night interface built around the voice orb. Deep ink backgrounds, raised slate surfaces,
+// and one accent family (electric blue to violet) that also colours the orb.
 export const C = {
-  night: '#0D1B2E',
-  nightSoft: '#16294A',
-  nightLine: '#24395E',
-  mist: '#9DB3D1', // muted text on night
-  paper: '#F1F4F8',
-  surface: '#FFFFFF',
-  text: '#0D1B2E',
-  sub: '#5A6A82',
-  faint: '#93A1B5',
-  line: '#E2E7EE',
-  rain: '#2366E8', // primary: buttons, links, the mic
-  rainLight: '#7DC3FF', // on night backgrounds
-  rainWash: '#E7F0FF',
-  late: '#D0384B',
-  lateWash: '#FDECEE',
-  ok: '#13875F',
-  okWash: '#E4F5EE',
+  bg: '#070B14',
+  bgSoft: '#0C1220',
+  surface: '#111A2B',
+  surfaceHi: '#172238',
+  line: '#1E2A42',
+  lineHi: '#2A3956',
+  text: '#F2F5FB',
+  sub: '#9AA8C2',
+  faint: '#5F6E8A',
+  accent: '#5B7CFF',
+  accentSoft: '#5B7CFF26',
+  violet: '#9A6BFF',
+  cyan: '#4FD3FF',
+  ok: '#3DD68C',
+  okSoft: '#3DD68C22',
+  late: '#FF6B7D',
+  lateSoft: '#FF6B7D22',
+  amber: '#FFB547',
+  amberSoft: '#FFB54722',
+  purple: '#B98CFF',
+  purpleSoft: '#B98CFF22',
 };
 
 export const F = {
-  regular: 'Plex400',
-  medium: 'Plex500',
-  semibold: 'Plex600',
-  bold: 'Plex700',
+  regular: 'Readex400',
+  medium: 'Readex500',
+  semibold: 'Readex600',
+  bold: 'Readex700',
+  brand: 'ReemKufi700',
 };
 
 export const TS = {
-  hero: 30,
-  h1: 24,
-  h2: 18,
+  display: 28,
+  h1: 22,
+  h2: 17,
   body: 15,
   small: 13,
   tiny: 11,

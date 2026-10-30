@@ -13,7 +13,7 @@ const TIMES: [number, number, string][] = [
 
 function Step({ icon, onPress, label }: { icon: IconName; onPress: () => void; label: string }) {
   return (
-    <Pressable onPress={onPress} hitSlop={8} accessibilityLabel={label} style={({ pressed }) => ({ width: 34, height: 34, borderRadius: 10, backgroundColor: pressed ? C.line : C.paper, alignItems: 'center', justifyContent: 'center' })}>
+    <Pressable onPress={onPress} hitSlop={8} accessibilityLabel={label} style={({ pressed }) => ({ width: 34, height: 34, borderRadius: 10, backgroundColor: pressed ? C.lineHi : C.surfaceHi, alignItems: 'center', justifyContent: 'center' })}>
       <Icon name={icon} size={20} color={C.sub} />
     </Pressable>
   );
@@ -45,7 +45,7 @@ export function WhenPicker({ value, onChange, noneLabel = 'بدون' }: { value:
       </HScroll>
       {value && (
         <>
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.paper, borderRadius: 14, padding: 8, marginTop: 10 }}>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 14, padding: 8, marginTop: 10 }}>
             <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
               <Step icon="chevron-right" label="يوم قبل" onPress={() => onChange(addDays(value, -1))} />
               <T w="semibold" size={TS.small} style={{ minWidth: 92 }} align="center">{dayLabel(value)}</T>

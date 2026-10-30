@@ -1,22 +1,15 @@
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useStore } from '../lib/store';
 import { addDays, atTime, CAT_ORDER, Category, CATS, Kind, KIND_ORDER, KINDS, Priority, Repeat, REPEATS, startOfDay, Task } from '../lib/tasks';
-import { C } from '../theme';
-import { Chip, ErrorText, Field, GhostButton, HScroll, Label, PrimaryButton } from '../ui';
+import { C, TS } from '../theme';
+import { Chip, ErrorText, Field, GhostButton, HScroll, Icon, Label, PrimaryButton, T } from '../ui';
 import { Sheet } from './Sheet';
 import { WhenPicker } from './WhenPicker';
 
-const PRIORITIES: [Priority, string][] = [
-  ['high', 'مستعجل'],
-  ['normal', 'عادي'],
-  ['low', 'مش مستعجل'],
-];
-
-/** Add a task by hand, or look at and change one: everything غيث can do by voice, by touch */
+/** A task by hand: the essentials first (what, which kind, when to remind), the rest under "more details" */
 export function TaskSheet({ task, onClose }: { task: Task | null; onClose: () => void }) {
   const { save, complete, reopen, remove } = useStore();
-  // Mounted fresh each time it opens, so the fields start from the task (or a new one)
   const [title, setTitle] = useState(task?.title ?? '');
   const [kind, setKind] = useState<Kind>(task?.kind ?? 'todo');
   const [category, setCategory] = useState<Category>(task?.category ?? 'work');
@@ -26,6 +19,7 @@ export function TaskSheet({ task, onClose }: { task: Task | null; onClose: () =>
   const [remind, setRemind] = useState<Date | null>(() => (task ? (task.remind_at ? new Date(task.remind_at) : null) : atTime(addDays(startOfDay(new Date()), 1), 9)));
   const [repeat, setRepeat] = useState<Repeat | null>(task?.repeat ?? null);
   const [notes, setNotes] = useState(task?.notes ?? '');
+  const [more, setMore] = useState(() => !!(task && (task.due_at || task.person || task.notes || task.repeat || task.priority !== 'normal')));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -68,20 +62,15 @@ export function TaskSheet({ task, onClose }: { task: Task | null; onClose: () =>
   const done = task?.status === 'done';
 
   return (
-    <Sheet
-      visible
-      title={task ? 'المهمة' : 'مهمة جديدة'}
-      onClose={onClose}
-      footer={<PrimaryButton label={task ? 'حفظ' : 'أضف'} onPress={submit} busy={busy} />}
-    >
+    <Sheet visible title={task ? 'المهمة' : 'مهمة جديدة'} onClose={onClose} footer={<PrimaryButton label={task ? 'حفظ' : 'أضف'} onPress={submit} busy={busy} />}>
       {task && (
-        <View style={{ flexDirection: 'row-reverse', gap: 8, marginTop: 6 }}>
+        <View style={{ flexDirection: 'row-reverse', gap: 8, marginTop: 6, marginBottom: 4 }}>
           {done ? (
             <GhostButton label="رجّعها مفتوحة" icon="restore" onPress={act(() => reopen(task.id))} />
           ) : (
             <>
-              <GhostButton label="خلصت" icon="check-circle-outline" color={C.ok} onPress={act(() => complete(task.id))} />
-              <GhostButton label="أجّل لبكرة" icon="weather-sunset-up" onPress={postpone} />
+              <GhostButton label="خلصت" icon="check" color={C.ok} onPress={act(() => complete(task.id))} />
+              <GhostButton label="لبكرة" icon="weather-sunset-up" onPress={postpone} />
             </>
           )}
           <GhostButton label="حذف" icon="trash-can-outline" color={C.late} onPress={act(() => remove(task.id))} />
@@ -91,11 +80,14 @@ export function TaskSheet({ task, onClose }: { task: Task | null; onClose: () =>
       <Field label="شو المهمة؟" value={title} onChangeText={setTitle} placeholder="مثلاً: الرد على إيميل المدير" autoFocus={!task} maxLength={300} />
 
       <Label>النوع</Label>
-      <View style={{ flexDirection: 'row-reverse', gap: 8, flexWrap: 'wrap' }}>
+      <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
         {KIND_ORDER.map((k) => (
           <Chip key={k} label={KINDS[k].label} icon={KINDS[k].icon} color={KINDS[k].color} on={kind === k} onPress={() => setKind(k)} />
         ))}
       </View>
+
+      <Label>ذكّرني</Label>
+      <WhenPicker value={remind} onChange={setRemind} noneLabel="بدون" />
 
       <Label>التصنيف</Label>
       <HScroll>
@@ -104,36 +96,36 @@ export function TaskSheet({ task, onClose }: { task: Task | null; onClose: () =>
         ))}
       </HScroll>
 
-      <Field
-        label={kind === 'waiting' ? 'ناطر مين؟' : kind === 'reply' ? 'لازم ترد على مين؟' : 'شخص أو جهة مرتبطة (اختياري)'}
-        value={person}
-        onChangeText={setPerson}
-        placeholder="المدير، أحمد، قسم IT..."
-        maxLength={120}
-      />
+      {!more && (
+        <Pressable onPress={() => setMore(true)} style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4, marginTop: 18 }}>
+          <Icon name="chevron-down" size={18} color={C.accent} />
+          <T size={TS.small} w="medium" color={C.accent}>تفاصيل أكثر: الموعد النهائي، الشخص، التكرار</T>
+        </Pressable>
+      )}
 
-      <Label>الموعد النهائي</Label>
-      <WhenPicker value={due} onChange={setDue} noneLabel="بدون موعد" />
+      {more && (
+        <>
+          <Field label={kind === 'waiting' ? 'ناطر مين؟' : kind === 'reply' ? 'ترد على مين؟' : 'شخص أو جهة'} value={person} onChangeText={setPerson} placeholder="المدير، أحمد، قسم IT…" maxLength={120} />
 
-      <Label>ذكّرني</Label>
-      <WhenPicker value={remind} onChange={setRemind} noneLabel="بدون تذكير" />
+          <Label>الموعد النهائي</Label>
+          <WhenPicker value={due} onChange={setDue} noneLabel="بدون" />
 
-      <Label>الأولوية</Label>
-      <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
-        {PRIORITIES.map(([p, l]) => (
-          <Chip key={p} label={l} on={priority === p} color={p === 'high' ? C.late : C.night} onPress={() => setPriority(p)} />
-        ))}
-      </View>
+          <Label>مستعجل؟</Label>
+          <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
+            <Chip label="مستعجل" on={priority === 'high'} color={C.amber} onPress={() => setPriority(priority === 'high' ? 'normal' : 'high')} />
+          </View>
 
-      <Label>تتكرر؟</Label>
-      <HScroll>
-        <Chip label="لا" on={!repeat} onPress={() => setRepeat(null)} />
-        {(Object.keys(REPEATS) as Repeat[]).map((r) => (
-          <Chip key={r} label={REPEATS[r]} on={repeat === r} onPress={() => setRepeat(r)} />
-        ))}
-      </HScroll>
+          <Label>تتكرر؟</Label>
+          <HScroll>
+            <Chip label="لا" on={!repeat} onPress={() => setRepeat(null)} />
+            {(Object.keys(REPEATS) as Repeat[]).map((r) => (
+              <Chip key={r} label={REPEATS[r]} on={repeat === r} onPress={() => setRepeat(r)} />
+            ))}
+          </HScroll>
 
-      <Field label="ملاحظات" value={notes} onChangeText={setNotes} placeholder="تفاصيل، أرقام، المطلوب بالضبط" multiline maxLength={2000} />
+          <Field label="ملاحظات" value={notes} onChangeText={setNotes} placeholder="تفاصيل، أرقام، المطلوب بالضبط" multiline maxLength={2000} />
+        </>
+      )}
       <ErrorText text={err} />
       <View style={{ height: 12 }} />
     </Sheet>

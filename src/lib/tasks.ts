@@ -26,20 +26,20 @@ export type Task = {
 export const TASK_FIELDS = 'id,title,notes,kind,category,priority,person,due_at,remind_at,repeat,status,done_at,source,created_at,updated_at';
 
 export const KINDS: Record<Kind, { label: string; short: string; icon: IconName; color: string }> = {
-  todo: { label: 'عليّ', short: 'عليّ', icon: 'checkbox-blank-circle-outline', color: '#2366E8' },
-  waiting: { label: 'ناطر رد', short: 'ناطر', icon: 'timer-sand', color: '#C27A0B' },
-  reply: { label: 'لازم أرد', short: 'ما رديت', icon: 'reply', color: '#7A3FE0' },
+  todo: { label: 'عليّ', short: 'عليّ', icon: 'checkbox-blank-circle-outline', color: '#5B7CFF' },
+  waiting: { label: 'ناطر رد', short: 'ناطر', icon: 'timer-sand', color: '#FFB547' },
+  reply: { label: 'لازم أرد', short: 'ما رديت', icon: 'reply', color: '#B98CFF' },
 };
 export const KIND_ORDER: Kind[] = ['todo', 'waiting', 'reply'];
 
 export const CATS: Record<Category, { label: string; icon: IconName; color: string }> = {
-  work: { label: 'عمل', icon: 'briefcase-outline', color: '#2366E8' },
-  home: { label: 'بيت', icon: 'home-outline', color: '#0E8F6B' },
-  car: { label: 'سيارة', icon: 'car-outline', color: '#DC6A2C' },
-  family: { label: 'عائلة', icon: 'account-group-outline', color: '#CF4D86' },
-  personal: { label: 'شخصي', icon: 'account-outline', color: '#7A3FE0' },
-  money: { label: 'فلوس', icon: 'cash-multiple', color: '#A8761A' },
-  other: { label: 'أخرى', icon: 'dots-horizontal', color: '#64748B' },
+  work: { label: 'عمل', icon: 'briefcase-outline', color: '#5B7CFF' },
+  home: { label: 'بيت', icon: 'home-outline', color: '#3DD68C' },
+  car: { label: 'سيارة', icon: 'car-outline', color: '#FF8A4C' },
+  family: { label: 'عائلة', icon: 'account-group-outline', color: '#FF6FAE' },
+  personal: { label: 'شخصي', icon: 'account-outline', color: '#B98CFF' },
+  money: { label: 'فلوس', icon: 'cash-multiple', color: '#FFD166' },
+  other: { label: 'أخرى', icon: 'dots-horizontal', color: '#9AA8C2' },
 };
 export const CAT_ORDER: Category[] = ['work', 'home', 'car', 'family', 'personal', 'money', 'other'];
 

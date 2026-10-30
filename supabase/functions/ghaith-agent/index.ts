@@ -2,8 +2,11 @@
 // user's tasks through tools (add, update, complete, delete, search), and returns a short spoken-style Arabic reply.
 // Every database call goes through a client that acts as the signed-in user, so row-level security applies.
 //
-// Secrets: ANTHROPIC_API_KEY (required), GHAITH_MODEL (optional, default below).
+// With `speak`, the reply also comes back as audio in غيث's voice (see ../_shared/tts.ts).
+//
+// Secrets: ANTHROPIC_API_KEY (required), GHAITH_MODEL (optional, default below), AZURE_SPEECH_KEY + AZURE_SPEECH_REGION (voice).
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2';
+import { speakArabic } from '../_shared/tts.ts';
 
 const MODEL = Deno.env.get('GHAITH_MODEL') || 'claude-haiku-5-5';
 const MAX_STEPS = 6;
@@ -168,7 +171,8 @@ ${list}
 - عربي بلهجة بيضاء قريبة من الشامية والخليجية، قصير جداً (جملة أو جملتين، والأسئلة عن القائمة ممكن أطول شوي)، لأنه غالباً بينقرأ بصوت عالي وهو سايق.
 - بدون markdown، بدون نجوم أو عناوين أو إيموجي. استخدم فواصل وجمل طبيعية.
 - اذكر الأوقات بشكل طبيعي ("بكرة الساعة 9 الصبح"، "الأحد الجاي") مش بأرقام ISO، ولا تذكر أرقام المهام.
-- إذا ما في شيء ينعمل (سلام، شكراً)، رد بلطف وباختصار.`;
+- إذا ما في شيء ينعمل (سلام، شكراً)، رد بلطف وباختصار.
+- إذا كان واضح إنه بينهي المحادثة (شكراً، خلص، بس هيك، يعطيك العافية، سلام)، رد بكلمة لطيفة قصيرة وحط بآخر ردك [END].`;
 }
 
 // ---------- Claude ----------
@@ -305,7 +309,7 @@ Deno.serve(async (req) => {
   const user = userData?.user;
   if (!user) return fail(401, 'NOT_SIGNED_IN', 'سجّل دخول أولاً');
 
-  let body: { text?: string; source?: string };
+  let body: { text?: string; source?: string; speak?: boolean; voice?: string };
   try { body = await req.json(); } catch { return fail(400, 'BAD_REQUEST', 'الطلب غير صالح'); }
   const text = String(body.text ?? '').trim().slice(0, 2000);
   if (!text) return fail(400, 'EMPTY', 'ما وصلني كلام');
@@ -362,12 +366,14 @@ Deno.serve(async (req) => {
   }
 
   if (!answer) answer = actions.length ? `تمام، ${actions.map((a) => a.title).join('، ')}.` : 'ما فهمت عليك منيح، عيدها بطريقة ثانية؟';
-  answer = answer.replace(/[*#`_]/g, '').slice(0, 3900);
+  const end = answer.includes('[END]');
+  answer = answer.replace('[END]', '').replace(/[*#`_]/g, '').trim().slice(0, 3900);
 
   await db.from('ghaith_messages').insert([
     { role: 'user', content: text },
     { role: 'assistant', content: answer, actions },
   ]);
 
-  return reply(200, { reply: answer, actions, model: MODEL });
+  const audio = body.speak && body.voice !== 'device' ? await speakArabic(answer, body.voice) : null;
+  return reply(200, { reply: answer, actions, end, audio, model: MODEL });
 });
