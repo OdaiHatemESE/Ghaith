@@ -8,7 +8,11 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ghaith.app"
+      "bundleIdentifier": "com.ghaith.app",
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "غيث بيحوّل كلامك لنص عشان يفهم المهام.",
+        "NSMicrophoneUsageDescription": "غيث بيحتاج المايك عشان تحكي معه وتعطيه مهامك بالصوت."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +22,10 @@
         "backgroundImage": "./assets/android-icon-background.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.ghaith.app"
+      "package": "com.ghaith.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -70,7 +77,15 @@
       "fallbackToCacheTimeout": 0,
       "requestHeaders": {
         "expo-channel-name": "production"
+      },
+      "url": "https://u.expo.dev/cb4b83f3-6424-4ca0-989b-45f6b786f569"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "cb4b83f3-6424-4ca0-989b-45f6b786f569"
       }
-    }
+    },
+    "owner": "odaihatem"
   }
 }
