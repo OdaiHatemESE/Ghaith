@@ -1,8 +1,10 @@
 name: Build Android APK
 
-# Runs only when started by hand (Actions → Build Android APK → Run workflow)
+# Runs only when asked: by hand (Actions → Build Android APK → Run workflow) or by pushing a tag named apk-*
 on:
   workflow_dispatch:
+  push:
+    tags: ['apk-*']
 
 permissions:
   contents: write
@@ -25,6 +27,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Over-the-air updates must be set up first
+        run: |
+          node -e "const c=require('./app.json').expo; if(!c.extra?.eas?.projectId || !c.updates?.url){console.log('::error::Run the over-the-air setup first (EXPO_TOKEN secret)'); process.exit(1)}"
 
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install

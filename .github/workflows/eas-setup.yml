@@ -1,0 +1,67 @@
+name: Over-the-air updates setup
+
+# Links the app to an Expo project once (needs the EXPO_TOKEN repository secret), writes the project id and the
+# update URL into app.json, creates the "production" channel, and commits the change. Does nothing once set up.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: eas-setup
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Already set up, or no token yet?
+        id: need
+        run: |
+          if node -e "process.exit(require('./app.json').expo?.extra?.eas?.projectId ? 0 : 1)"; then
+            echo "::notice::Already linked to an Expo project"; echo "go=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$EXPO_TOKEN" ]; then
+            echo "::warning::Add the EXPO_TOKEN repository secret to turn on over-the-air updates"; echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.need.outputs.go == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: steps.need.outputs.go == 'true'
+      - name: Create or link the Expo project
+        if: steps.need.outputs.go == 'true'
+        run: |
+          npx eas-cli@latest whoami
+          npx eas-cli@latest init --non-interactive --force
+      - name: Point updates at the project
+        if: steps.need.outputs.go == 'true'
+        run: |
+          node -e "
+            const fs = require('fs');
+            const c = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            const id = c.expo.extra.eas.projectId;
+            c.expo.updates = { ...(c.expo.updates || {}), url: 'https://u.expo.dev/' + id };
+            fs.writeFileSync('app.json', JSON.stringify(c, null, 2) + '\n');
+            console.log('::notice::projectId=' + id + ' owner=' + (c.expo.owner || ''));
+          "
+      - name: Create the production channel
+        if: steps.need.outputs.go == 'true'
+        run: npx eas-cli@latest channel:create production --non-interactive || echo "::notice::channel already exists"
+      - name: Commit app.json
+        if: steps.need.outputs.go == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.json
+          git commit -m "Link to Expo project for over-the-air updates"
+          git push

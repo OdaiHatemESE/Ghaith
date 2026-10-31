@@ -8,6 +8,7 @@ import React, { useEffect, useRef } from 'react';
 import { ActivityIndicator, I18nManager, Platform, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Aurora } from '../components/Aurora';
+import { AutoUpdate } from '../components/AutoUpdate';
 import { Wordmark } from '../components/Wordmark';
 import { clearReminders, notificationPermission, onReminderTap, ReminderTap, syncReminders } from '../lib/reminders';
 import { StoreProvider, useStore } from '../lib/store';
@@ -116,6 +117,7 @@ export default function RootLayout() {
         <StatusBar style="dark" />
         <View style={Platform.OS === 'web' ? { flex: 1, width: '100%', maxWidth: 520, alignSelf: 'center', backgroundColor: C.bg } : { flex: 1, backgroundColor: C.bg }}>
           <Gate />
+          <AutoUpdate />
         </View>
       </StoreProvider>
     </SafeAreaProvider>

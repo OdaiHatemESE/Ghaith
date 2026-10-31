@@ -1,7 +1,9 @@
+import Constants from 'expo-constants';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Aurora } from '../components/Aurora';
+import { versionLabel } from '../components/AutoUpdate';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { notificationPermission, PermissionState } from '../lib/reminders';
 import { useStore, Voice } from '../lib/store';
@@ -119,7 +121,7 @@ export default function Settings() {
           <ListRow icon="logout" title="تسجيل الخروج" danger onPress={() => signOut()} last />
         </Card>
 
-        <T size={TS.tiny} color={C.faint} align="center" style={{ marginTop: 24 }}>غيث · النسخة الأولى</T>
+        <T size={TS.tiny} color={C.faint} align="center" style={{ marginTop: 24 }}>غيث · {versionLabel(Constants.expoConfig?.version ?? '1.0.0')}</T>
       </ScrollView>
     </View>
   );

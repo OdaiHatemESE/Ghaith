@@ -1,0 +1,42 @@
+name: Publish over-the-air update
+
+# Every change to the app's screens on main reaches the installed APK by itself (it restarts into the new version).
+# Changes that need native code (a new permission or native library) still need a new APK and a higher app version.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['src/**', 'assets/**', 'app.json', 'package.json', 'package-lock.json']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eas-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip until over-the-air updates are set up
+        id: ready
+        run: |
+          if [ -z "$EXPO_TOKEN" ] || ! node -e "process.exit(require('./app.json').expo?.extra?.eas?.projectId ? 0 : 1)"; then
+            echo "::notice::Not set up yet (EXPO_TOKEN or projectId missing), nothing published"; echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.ready.outputs.go == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: steps.ready.outputs.go == 'true'
+      - name: Publish to the production channel
+        if: steps.ready.outputs.go == 'true'
+        run: npx eas-cli@latest update --channel production --environment production --platform android --non-interactive --message "$(git log -1 --pretty=%s)"
