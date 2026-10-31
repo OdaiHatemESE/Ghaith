@@ -7,7 +7,7 @@ import { Draft, Source } from '../lib/store';
 import { CATS, KINDS, shortWhen } from '../lib/tasks';
 import { useTick } from '../lib/useTick';
 import { C, liftMd, R, tint, TS } from '../theme';
-import { Check, ErrorText, Field, GhostButton, Icon, IconButton, Num, PrimaryButton, T, Tag } from '../ui';
+import { Card, Check, ErrorText, Field, GhostButton, Icon, IconButton, Num, PrimaryButton, T } from '../ui';
 import { Mark } from './Logo';
 import { Sheet } from './Sheet';
 import { TaskSheet } from './TaskSheet';
@@ -72,8 +72,8 @@ export function RecordView({ text, level, error, startedAt, onDone, onCancel }: 
           <IconButton icon="close" label="إلغاء" onPress={onCancel} />
         </View>
         <View style={{ alignItems: 'center', marginTop: 8, paddingHorizontal: 24 }}>
-          <T w="heavy" size={24} color={C.indigo} align="center">احكي، وأنا برتّب</T>
-          <T w="semibold" size={14} color={C.sub} align="center">قول كل المهام مرة وحدة، بأي ترتيب</T>
+          <T w="bold" size={TS.h1} align="center" style={{ lineHeight: 36 }}>احكي، وأنا برتّب</T>
+          <T size={TS.small} color={C.sub} align="center">قول كل المهام مرة وحدة، بأي ترتيب</T>
         </View>
 
         <View style={{ alignItems: 'center', justifyContent: 'center', height: 230, marginTop: 6 }}>
@@ -103,13 +103,13 @@ export function RecordView({ text, level, error, startedAt, onDone, onCancel }: 
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 6 }}>
           <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: C.late }} />
-          <Num size={15}>{`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`}</Num>
+          <Num size={TS.body}>{`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`}</Num>
         </View>
 
         <ScrollView style={{ flex: 1, marginTop: 14 }} contentContainerStyle={{ paddingHorizontal: 20 }}>
           <View style={{ backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: 20, padding: 16, minHeight: 96 }}>
-            <T w="bold" size={12} color={C.glow}>{text ? 'عم بسمعك…' : 'جاهز، احكي…'}</T>
-            <T w="semibold" size={15} style={{ lineHeight: 28 }} color={text ? C.text : C.faint}>
+            <T w="medium" size={TS.tiny} color={C.glow}>{text ? 'عم بسمعك…' : 'جاهز، احكي…'}</T>
+            <T size={TS.body} color={text ? C.text : C.faint}>
               {text || 'مثلاً: «بكرة الصبح لازم أرد على إيميل خالد، وذكّرني الخميس أجدد ملكية السيارة، وناطر رد سارة على عرض السعر»'}
             </T>
           </View>
@@ -160,8 +160,8 @@ export function ThinkingView() {
         <View style={{ transform: [{ scale: s }], width: 124, height: 124, borderRadius: 38, backgroundColor: C.indigo, alignItems: 'center', justifyContent: 'center', shadowColor: C.glow, shadowOpacity: 0.5, shadowRadius: 40, shadowOffset: { width: 0, height: 12 }, elevation: 10 }}>
           <Mark size={78} />
         </View>
-        <T w="heavy" size={20} color={C.indigo} align="center" style={{ marginTop: 28 }}>غيث عم يرتّب{dots}</T>
-        <T w="semibold" size={14} color={C.sub} align="center">بقسّم كلامك مهام وبحط لكل وحدة وقتها</T>
+        <T w="bold" size={TS.h2} align="center" style={{ marginTop: 28 }}>غيث عم يرتّب{dots}</T>
+        <T size={TS.small} color={C.sub} align="center">بقسّم كلامك مهام وبحط لكل وحدة وقتها</T>
       </View>
     </Modal>
   );
@@ -170,54 +170,37 @@ export function ThinkingView() {
 // ---------------------------------------------------------------- review
 type Item = { key: number; draft: Draft; keep: boolean };
 
-function DraftCard({ item, onToggle, onRemove, onOpen }: { item: Item; onToggle: () => void; onRemove: () => void; onOpen: () => void }) {
+function DraftRow({ item, last, onToggle, onRemove, onOpen }: { item: Item; last: boolean; onToggle: () => void; onRemove: () => void; onOpen: () => void }) {
   const d = item.draft;
-  const kind = KINDS[d.kind];
-  const cat = CATS[d.category];
   const remind = d.remind_at ?? d.due_at;
+  const sub = [
+    KINDS[d.kind].label,
+    remind ? (d.kind === 'waiting' && !d.due_at ? 'بتابع ' : '') + shortWhen(remind) : null,
+    CATS[d.category].label,
+    d.person,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const warn = d.similar_to ? `عندك مهمة مشابهة: ${d.similar_to}` : !remind ? 'بدون وقت، اضغط لتحدد متى أذكّرك' : '';
   return (
     <Pressable
       onPress={onOpen}
-      style={({ pressed }) => ({
-        backgroundColor: pressed ? '#FBFBFF' : C.surface,
-        borderRadius: 18,
-        padding: 12,
-        marginBottom: 8,
-        borderWidth: 1.5,
-        borderColor: item.keep ? tint(C.teal, 0.45) : 'transparent',
-        opacity: item.keep ? 1 : 0.55,
-        shadowColor: C.indigo,
-        shadowOpacity: 0.07,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 4 },
-        elevation: 2,
-      })}
+      style={({ pressed }) => ({ flexDirection: 'row-reverse', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, backgroundColor: pressed ? C.bg : 'transparent', opacity: item.keep ? 1 : 0.5 })}
     >
-      <View style={{ flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 10 }}>
-        <Check on={item.keep} onPress={onToggle} size={24} label={item.keep ? 'لا تحفظها' : 'احفظها'} />
-        <T w="bold" size={15} style={{ flex: 1 }}>{d.title}</T>
-        <Pressable onPress={onRemove} hitSlop={10} accessibilityLabel="شيلها">
-          <Icon name="close" size={18} color={C.faint} />
-        </Pressable>
-      </View>
-      <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginTop: 9, paddingRight: 34 }}>
-        <Tag label={kind.label} icon={kind.icon} color={kind.color} />
-        {remind ? (
-          <Tag label={(d.kind === 'waiting' && !d.due_at ? 'بتابع ' : '') + shortWhen(remind)} icon={d.remind_at ? 'bell-outline' : 'calendar-blank-outline'} color={C.indigo} bg={C.surfaceAlt} />
-        ) : (
-          <Tag label="بدون وقت، اضغط لتحدد" icon="clock-outline" color={C.amberText} bg="#FFF4DE" />
-        )}
-        <Tag label={cat.label} color={cat.color} />
-        {d.priority === 'high' && <Tag label="مهم" color={C.late} />}
-        {!!d.person && <Tag label={d.person} icon="account-outline" color={C.indigo} bg={C.surfaceAlt} />}
-        {!!d.repeat && <Tag label="تتكرر" icon="repeat" color={C.indigo} bg={C.surfaceAlt} />}
-      </View>
-      {!!d.similar_to && (
-        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginTop: 8, paddingRight: 34 }}>
-          <Icon name="content-duplicate" size={14} color={C.amberText} />
-          <T size={12} w="semibold" color={C.amberText} style={{ flex: 1 }} numberOfLines={2}>عندك مهمة مشابهة: {d.similar_to}</T>
+      <Check on={item.keep} onPress={onToggle} size={24} label={item.keep ? 'لا تحفظها' : 'احفظها'} />
+      <View style={{ flex: 1, marginRight: 12, marginLeft: 8 }}>
+        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+          <T w="medium" numberOfLines={2} style={{ flexShrink: 1 }}>{d.title}</T>
+          {d.priority === 'high' && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: C.late }} />}
+          {!!d.repeat && <Icon name="repeat" size={14} color={C.faint} />}
         </View>
-      )}
+        <T size={TS.small} color={C.sub} numberOfLines={1}>{sub}</T>
+        {!!warn && <T size={TS.tiny} color={C.amberText} numberOfLines={1}>{warn}</T>}
+      </View>
+      <Pressable onPress={onRemove} hitSlop={12} accessibilityLabel="شيلها">
+        <Icon name="close" size={18} color={C.faint} />
+      </Pressable>
+      {!last && <View style={{ position: 'absolute', bottom: 0, left: 16, right: 52, height: 1, backgroundColor: C.line }} />}
     </Pressable>
   );
 }
@@ -248,32 +231,37 @@ export function ReviewView({ said, source, drafts, onSave, onClose, onRetry }: {
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: tint(C.glow, 0.1), paddingHorizontal: 10, paddingVertical: 3, borderRadius: R.pill }}>
               <Icon name="creation" size={14} color={C.glow} />
-              <T w="bold" size={12} color={C.glow}>{items.length ? 'جاهزة للمراجعة' : 'ما لقيت مهام'}</T>
+              <T w="medium" size={TS.tiny} color={C.glow}>{items.length ? 'جاهزة للمراجعة' : 'ما لقيت مهام'}</T>
             </View>
             <IconButton icon="close" label="إغلاق" onPress={onClose} />
           </View>
-          <T w="heavy" size={23} color={C.indigo} style={{ marginTop: 8 }}>
+          <T w="bold" size={TS.h1} style={{ marginTop: 10, lineHeight: 36 }}>
             {items.length ? `طلّعت ${countTasks(items.length)} من ${source === 'email' ? 'الإيميل' : 'كلامك'}` : 'ما لقيت شي أسجّله'}
           </T>
-          <T w="semibold" size={13.5} color={C.sub}>
+          <T size={TS.small} color={C.sub}>
             {items.length ? 'اضغط على أي مهمة لتعدّلها، أو شيلها من القائمة' : 'جرّب تحكيها بطريقة ثانية، أو أضف المهمة بإيدك.'}
           </T>
 
-          <Pressable onPress={() => setShowSaid((v) => !v)} style={{ marginTop: 12, marginBottom: 6, borderRadius: 14, backgroundColor: C.surfaceAlt, paddingHorizontal: 12, paddingVertical: 9, flexDirection: 'row-reverse', alignItems: showSaid ? 'flex-start' : 'center', gap: 8 }}>
+          <Pressable onPress={() => setShowSaid((v) => !v)} style={{ marginTop: 16, marginBottom: 16, borderRadius: 14, backgroundColor: C.surfaceAlt, paddingHorizontal: 12, paddingVertical: 9, flexDirection: 'row-reverse', alignItems: showSaid ? 'flex-start' : 'center', gap: 8 }}>
             <Icon name={source === 'voice' ? 'microphone-outline' : source === 'email' ? 'email-outline' : 'text'} size={17} color={C.indigo} />
-            <T size={12.5} w="semibold" color={C.sub} style={{ flex: 1 }} numberOfLines={showSaid ? undefined : 1}>«{said}»</T>
-            <T size={12} w="bold" color={C.glow}>{showSaid ? 'إخفاء' : source === 'voice' ? 'اللي قلته' : 'النص'}</T>
+            <T size={TS.small} color={C.sub} style={{ flex: 1 }} numberOfLines={showSaid ? undefined : 1}>«{said}»</T>
+            <T size={TS.small} w="medium" color={C.glow}>{showSaid ? 'إخفاء' : source === 'voice' ? 'اللي قلته' : 'النص'}</T>
           </Pressable>
 
-          {items.map((it) => (
-            <DraftCard
-              key={it.key}
-              item={it}
-              onToggle={() => setItems((l) => l.map((x) => (x.key === it.key ? { ...x, keep: !x.keep } : x)))}
-              onRemove={() => setItems((l) => l.filter((x) => x.key !== it.key))}
-              onOpen={() => setEdit({ key: it.key })}
-            />
-          ))}
+          {!!items.length && (
+            <Card>
+              {items.map((it, i) => (
+                <DraftRow
+                  key={it.key}
+                  item={it}
+                  last={i === items.length - 1}
+                  onToggle={() => setItems((l) => l.map((x) => (x.key === it.key ? { ...x, keep: !x.keep } : x)))}
+                  onRemove={() => setItems((l) => l.filter((x) => x.key !== it.key))}
+                  onOpen={() => setEdit({ key: it.key })}
+                />
+              ))}
+            </Card>
+          )}
           {!items.length && (
             <View style={{ flexDirection: 'row', marginTop: 12 }}>
               <GhostButton label="جرّب كمان مرة" icon="microphone-outline" onPress={onRetry} />

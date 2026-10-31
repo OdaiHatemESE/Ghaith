@@ -3,13 +3,13 @@ import React, { useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenHeader } from '../components/ScreenHeader';
-import { TaskCard } from '../components/TaskCard';
+import { TaskRow } from '../components/TaskRow';
 import { TaskSheet } from '../components/TaskSheet';
 import { useStore } from '../lib/store';
 import { dayLabel, GroupKey, groupOf, GROUPS, Kind, KINDS, sortTasks, Task } from '../lib/tasks';
 import { useNow } from '../lib/useNow';
 import { C, TS } from '../theme';
-import { Chip, HScroll, IconButton, Segmented, T } from '../ui';
+import { Card, Chip, HScroll, IconButton, Segmented, T } from '../ui';
 
 const ORDER: GroupKey[] = ['late', 'today', 'tomorrow', 'week', 'later', 'someday'];
 
@@ -81,14 +81,16 @@ export default function Tasks() {
         )}
 
         {sections.map((g) => (
-          <View key={g.key} style={{ marginTop: 20 }}>
-            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginBottom: 8, paddingHorizontal: 4 }}>
-              <T w="heavy" size={TS.h2} color={g.late ? C.late : C.indigo}>{g.title}</T>
+          <View key={g.key} style={{ marginTop: 24 }}>
+            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <T w="bold" size={TS.h2} color={g.late ? C.late : C.text}>{g.title}</T>
               <T size={TS.small} color={C.faint}>{g.list.length}</T>
             </View>
-            {g.list.map((t) => (
-              <TaskCard key={t.id} task={t} onToggle={() => (t.status === 'done' ? reopen(t.id) : complete(t.id))} onOpen={() => setSheet({ task: t })} />
-            ))}
+            <Card>
+              {g.list.map((t, i) => (
+                <TaskRow key={t.id} task={t} now={now} last={i === g.list.length - 1} onToggle={() => (t.status === 'done' ? reopen(t.id) : complete(t.id))} onOpen={() => setSheet({ task: t })} />
+              ))}
+            </Card>
           </View>
         ))}
 

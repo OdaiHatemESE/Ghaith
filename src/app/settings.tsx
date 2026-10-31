@@ -30,9 +30,9 @@ const FOLLOW = [1, 2, 3, 5, 7];
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <View style={{ marginTop: 24 }}>
-      <T w="heavy" size={TS.body} color={C.indigo} style={{ paddingHorizontal: 4 }}>{title}</T>
-      {!!hint && <T size={TS.small} color={C.sub} style={{ paddingHorizontal: 4, marginBottom: 10 }}>{hint}</T>}
+    <View style={{ marginTop: 28 }}>
+      <T w="bold" size={TS.h2}>{title}</T>
+      {!!hint && <T size={TS.small} color={C.sub} style={{ marginBottom: 12 }}>{hint}</T>}
       {children}
     </View>
   );

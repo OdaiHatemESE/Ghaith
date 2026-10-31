@@ -4,9 +4,9 @@ import { ActivityIndicator, Platform, Pressable, ScrollView, StyleProp, Text, Te
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { C, F, GRADIENT, lift, R, tint, TS } from './theme';
 
-type Weight = 'regular' | 'medium' | 'semibold' | 'bold' | 'heavy';
+type Weight = 'regular' | 'medium' | 'semibold' | 'bold';
 
-/** Arabic text: Cairo, right aligned, RTL bidi */
+/** Arabic text: IBM Plex Sans Arabic (as in قديش), right aligned, RTL bidi */
 export function T({
   w = 'regular',
   size = TS.body,
@@ -18,14 +18,14 @@ export function T({
   return (
     <Text
       {...rest}
-      style={[{ fontFamily: F[w], fontSize: size, color, textAlign: align, writingDirection: 'rtl', lineHeight: Math.round(size * 1.55) }, style]}
+      style={[{ fontFamily: F[w], fontSize: size, color, textAlign: align, writingDirection: 'rtl', lineHeight: Math.round(size * 1.5) }, style]}
     />
   );
 }
 
-/** Numbers in Manrope */
+/** Numbers */
 export function Num({ children, size = 24, color = C.indigo, style }: { children: React.ReactNode; size?: number; color?: string; style?: StyleProp<TextStyle> }) {
-  return <Text style={[{ fontFamily: F.num, fontSize: size, color, lineHeight: Math.round(size * 1.15) }, style]}>{children}</Text>;
+  return <Text style={[{ fontFamily: F.num, fontSize: size, color, lineHeight: Math.round(size * 1.25), letterSpacing: size > 30 ? -1 : 0 }, style]}>{children}</Text>;
 }
 
 export type IconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -104,7 +104,7 @@ export function Chip({ label, on, onPress, icon, color = C.glow }: { label: stri
       }}
     >
       {icon && <Icon name={icon} size={15} color={on ? color : C.sub} />}
-      <T size={TS.small} w={on ? 'bold' : 'medium'} color={on ? C.indigo : C.sub}>{label}</T>
+      <T size={TS.small} w={on ? 'semibold' : 'regular'} color={on ? C.indigo : C.text}>{label}</T>
     </Pressable>
   );
 }
@@ -114,7 +114,7 @@ export function Tag({ label, color = C.indigo, bg, icon }: { label: string; colo
   return (
     <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 2, borderRadius: R.pill, backgroundColor: bg ?? tint(color, 0.1) }}>
       {icon && <Icon name={icon} size={12} color={color} />}
-      <T size={TS.tiny} w="bold" color={color}>{label}</T>
+      <T size={TS.tiny} w="medium" color={color}>{label}</T>
     </View>
   );
 }
@@ -133,7 +133,7 @@ export function Segmented<K extends string>({ value, options, onChange }: { valu
             accessibilityState={{ selected: on }}
             style={{ flex: 1, paddingVertical: 8, borderRadius: R.pill, backgroundColor: on ? C.surface : 'transparent', alignItems: 'center', ...(on ? lift : {}) }}
           >
-            <T size={TS.small} w={on ? 'bold' : 'medium'} color={on ? C.indigo : C.sub} align="center">{label}</T>
+            <T size={TS.small} w={on ? 'semibold' : 'regular'} color={on ? C.indigo : C.sub} align="center">{label}</T>
           </Pressable>
         );
       })}
@@ -172,7 +172,7 @@ export function PrimaryButton({ label, onPress, busy = false, disabled = false, 
         <ActivityIndicator color="#fff" />
       ) : (
         <>
-          <T w="heavy" size={16} color="#fff" align="center">{label}</T>
+          <T w="bold" size={16} color="#fff" align="center">{label}</T>
           {icon && <Icon name={icon} size={20} color="#fff" />}
         </>
       )}
@@ -203,7 +203,7 @@ export function GhostButton({ label, onPress, icon, color = C.indigo, style }: {
       ]}
     >
       {icon && <Icon name={icon} size={18} color={color} />}
-      <T w="bold" size={TS.body} color={color}>{label}</T>
+      <T w="semibold" size={TS.body} color={color}>{label}</T>
     </Pressable>
   );
 }
@@ -242,7 +242,7 @@ export function Field({
   return (
     <View style={{ marginTop: label ? 14 : 0 }}>
       {!!label && <T w="semibold" size={TS.small} color={C.sub} style={{ marginBottom: 6 }}>{label}</T>}
-      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: C.surface, borderRadius: R.card, borderWidth: 1.5, borderColor: C.line }}>
+      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: C.surface, borderRadius: 14, borderWidth: 1, borderColor: C.line }}>
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -262,13 +262,13 @@ export function Field({
             flex: 1,
             minWidth: 0,
             width: '100%',
-            fontFamily: F.medium,
+            fontFamily: F.regular,
             fontSize: TS.body,
             color: C.text,
             textAlign: 'right',
             writingDirection: ltr ? 'ltr' : 'rtl',
             paddingHorizontal: 14,
-            paddingVertical: 12,
+            paddingVertical: 13,
             minHeight: multiline ? minHeight ?? 76 : undefined,
             textAlignVertical: multiline ? 'top' : 'center',
             ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null),
@@ -299,7 +299,7 @@ export function ErrorText({ text }: { text: string }) {
 }
 
 export function Label({ children }: { children: string }) {
-  return <T w="bold" size={TS.small} color={C.sub} style={{ marginTop: 18, marginBottom: 8 }}>{children}</T>;
+  return <T w="semibold" size={TS.small} color={C.sub} style={{ marginTop: 18, marginBottom: 8 }}>{children}</T>;
 }
 
 /** Settings-style row: icon, title, optional detail, and something on the left */
@@ -317,7 +317,7 @@ export function ListRow({ icon, title, detail, onPress, last, danger, right }: {
         </View>
       )}
       <View style={{ flex: 1, marginRight: icon ? 12 : 0 }}>
-        <T w="semibold" color={danger ? C.late : C.text}>{title}</T>
+        <T w="medium" color={danger ? C.late : C.text}>{title}</T>
         {!!detail && <T size={TS.small} color={C.sub}>{detail}</T>}
       </View>
       {right}
@@ -365,5 +365,19 @@ export function Check({ on, onPress, size = 26, label }: { on: boolean; onPress?
     >
       {on && <Icon name="check-bold" size={size * 0.58} color="#fff" />}
     </Pressable>
+  );
+}
+
+/** Section title with an optional link on the left (as in قديش) */
+export function SectionHead({ title, action, onAction, color = C.text }: { title: string; action?: string; onAction?: () => void; color?: string }) {
+  return (
+    <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginTop: 28, marginBottom: 12 }}>
+      <T w="bold" size={TS.h2} color={color}>{title}</T>
+      {!!action && (
+        <Pressable onPress={onAction} hitSlop={10}>
+          <T w="medium" size={TS.small} color={C.glow}>{action}</T>
+        </Pressable>
+      )}
+    </View>
   );
 }

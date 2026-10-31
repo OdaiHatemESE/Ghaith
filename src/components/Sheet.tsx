@@ -40,7 +40,7 @@ export function Sheet({
         >
           <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: C.lineHi, marginTop: 10 }} />
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 6 }}>
-            <T w="heavy" size={TS.h2} color={C.indigo}>{title}</T>
+            <T w="bold" size={TS.h2}>{title}</T>
             <Pressable onPress={onClose} hitSlop={12} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="close" size={18} color={C.sub} />
             </Pressable>

@@ -1,5 +1,4 @@
-import { Cairo_400Regular, Cairo_500Medium, Cairo_600SemiBold, Cairo_700Bold, Cairo_800ExtraBold } from '@expo-google-fonts/cairo';
-import { Manrope_700Bold, Manrope_800ExtraBold } from '@expo-google-fonts/manrope';
+import { IBMPlexSansArabic_400Regular, IBMPlexSansArabic_500Medium, IBMPlexSansArabic_600SemiBold, IBMPlexSansArabic_700Bold } from '@expo-google-fonts/ibm-plex-sans-arabic';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
 import { router, Stack } from 'expo-router';
@@ -100,13 +99,10 @@ function Gate() {
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
-    Cairo400: Cairo_400Regular,
-    Cairo500: Cairo_500Medium,
-    Cairo600: Cairo_600SemiBold,
-    Cairo700: Cairo_700Bold,
-    Cairo800: Cairo_800ExtraBold,
-    Manrope700: Manrope_700Bold,
-    Manrope800: Manrope_800ExtraBold,
+    Plex400: IBMPlexSansArabic_400Regular,
+    Plex500: IBMPlexSansArabic_500Medium,
+    Plex600: IBMPlexSansArabic_600SemiBold,
+    Plex700: IBMPlexSansArabic_700Bold,
     ...MaterialCommunityIcons.font,
   });
   if (!fontsLoaded) return <View style={{ flex: 1, backgroundColor: C.bg }} />;

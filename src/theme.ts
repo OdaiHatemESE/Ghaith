@@ -1,5 +1,5 @@
 // غيث brand identity: Deep Indigo, Electric Teal and a violet glow on a cool off-white canvas.
-// Clean white cards with soft indigo shadows, 16px radius, pill buttons with an indigo→violet gradient.
+// Layout, type and spacing follow قديش: grouped white cards (radius 20) with divided rows, 16px gutters.
 export const C = {
   // brand
   indigo: '#1B1F6B',
@@ -31,26 +31,25 @@ export const C = {
 /** Soft tint of a colour for chips and icon tiles */
 export const tint = (hex: string, a = 0.12) => hex + Math.round(a * 255).toString(16).padStart(2, '0');
 
+// Same type as قديش: IBM Plex Sans Arabic, ≈1.25 scale, 1.5 line height
 export const F = {
-  regular: 'Cairo400',
-  medium: 'Cairo500',
-  semibold: 'Cairo600',
-  bold: 'Cairo700',
-  heavy: 'Cairo800',
-  num: 'Manrope800',
-  numBold: 'Manrope700',
+  regular: 'Plex400',
+  medium: 'Plex500',
+  semibold: 'Plex600',
+  bold: 'Plex700',
+  num: 'Plex600',
 };
 
 export const TS = {
-  display: 26,
-  h1: 22,
-  h2: 17,
+  display: 28,
+  h1: 24,
+  h2: 18,
   body: 15,
   small: 13,
-  tiny: 11.5,
+  tiny: 11,
 };
 
-export const R = { card: 16, big: 24, pill: 999 };
+export const R = { card: 20, big: 24, pill: 999 };
 
 export const GRADIENT = ['#2F35A8', '#7C5CFF'] as const;
 
