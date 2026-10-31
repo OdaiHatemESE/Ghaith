@@ -2,6 +2,7 @@ import React from 'react';
 import { Image, View } from 'react-native';
 import { C, F } from '../theme';
 import { T } from '../ui';
+import { D, tx } from '../lib/i18n';
 
 const MARK = require('../../assets/brand/logo.png');
 
@@ -13,9 +14,9 @@ export function Mark({ size = 34 }: { size?: number }) {
 /** Mark + «غيث», for headers */
 export function Logo({ size = 34 }: { size?: number }) {
   return (
-    <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }} accessibilityLabel="غيث">
+    <View style={{ flexDirection: D.row, alignItems: 'center', gap: 8 }} accessibilityLabel={tx('غيث', 'Ghaith')}>
       <Mark size={size} />
-      <T style={{ fontFamily: F.bold, fontSize: size * 0.6, lineHeight: size, color: C.indigo }}>غيث</T>
+      <T style={{ fontFamily: F.bold, fontSize: size * 0.6, lineHeight: size, color: C.indigo }}>{tx('غيث', 'Ghaith')}</T>
     </View>
   );
 }

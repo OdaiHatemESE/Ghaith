@@ -1,15 +1,15 @@
 import * as Haptics from 'expo-haptics';
 import React from 'react';
 import { Platform, Pressable, View } from 'react-native';
-import { CATS, clock, dayLabel, isLate, KINDS, Task } from '../lib/tasks';
+import { CATS, clock, dayDiff, dayLabel, isLate, KINDS, Task } from '../lib/tasks';
 import { C, TS } from '../theme';
 import { Check, Icon, T } from '../ui';
+import { D, tx } from '../lib/i18n';
 
-/** When, short, for the left edge of a row: "10:30 ص" today, "بكرة" / "الخميس" otherwise */
+/** When, short, for the end of a row: "10:30 ص" today, otherwise the day over the time */
 function whenShort(iso: string, now: Date): { top: string; bottom?: string } {
   const d = new Date(iso);
-  const day = dayLabel(d, now);
-  return day === 'اليوم' ? { top: clock(d) } : { top: day.split(' ').slice(0, 2).join(' '), bottom: clock(d) };
+  return dayDiff(d, now) === 0 ? { top: clock(d) } : { top: dayLabel(d, now).split(' ').slice(0, 2).join(' '), bottom: clock(d) };
 }
 
 /**
@@ -33,11 +33,11 @@ export function TaskRow({ task, onToggle, onOpen, last, now = new Date() }: { ta
     <Pressable
       onPress={onOpen}
       accessibilityLabel={task.title}
-      style={({ pressed }) => ({ flexDirection: 'row-reverse', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, backgroundColor: pressed ? C.bg : 'transparent' })}
+      style={({ pressed }) => ({ flexDirection: D.row, alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, backgroundColor: pressed ? C.bg : 'transparent' })}
     >
-      <Check on={done} onPress={toggle} size={24} label={done ? 'رجّعها مفتوحة' : 'خلصت'} />
-      <View style={{ flex: 1, marginRight: 12, marginLeft: 8 }}>
-        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+      <Check on={done} onPress={toggle} size={24} label={done ? tx('إعادة فتحها', 'Reopen') : tx('أُنجزت', 'Done')} />
+      <View style={{ flex: 1, [D.rtl ? 'marginRight' : 'marginLeft']: 12, [D.rtl ? 'marginLeft' : 'marginRight']: 8 }}>
+        <View style={{ flexDirection: D.row, alignItems: 'center', gap: 6 }}>
           <T w="medium" numberOfLines={1} color={done ? C.faint : C.text} style={[{ flexShrink: 1 }, done ? { textDecorationLine: 'line-through' } : null]}>
             {task.title}
           </T>
@@ -47,12 +47,12 @@ export function TaskRow({ task, onToggle, onOpen, last, now = new Date() }: { ta
         {!done && <T size={TS.small} color={C.sub} numberOfLines={1}>{sub}</T>}
       </View>
       {w && (
-        <View style={{ alignItems: 'flex-start' }}>
-          <T w="medium" size={TS.small} color={late ? C.late : C.text} align="left">{w.top}</T>
-          {!!w.bottom && <T size={TS.tiny} color={late ? C.late : C.sub} align="left">{w.bottom}</T>}
+        <View style={{ alignItems: D.rtl ? 'flex-start' : 'flex-end' }}>
+          <T w="medium" size={TS.small} color={late ? C.late : C.text} align="end">{w.top}</T>
+          {!!w.bottom && <T size={TS.tiny} color={late ? C.late : C.sub} align="end">{w.bottom}</T>}
         </View>
       )}
-      {!last && <View style={{ position: 'absolute', bottom: 0, left: 16, right: 52, height: 1, backgroundColor: C.line }} />}
+      {!last && <View style={{ position: 'absolute', bottom: 0, [D.end]: 16, [D.start]: 52, height: 1, backgroundColor: C.line }} />}
     </Pressable>
   );
 }

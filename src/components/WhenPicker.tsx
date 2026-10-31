@@ -1,66 +1,65 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
-import { addDays, atTime, dayLabel, nextMonday, startOfDay, timeLabel } from '../lib/tasks';
+import { D, tx } from '../lib/i18n';
+import { addDays, atTime, clock, dayLabel, nextMonday, startOfDay } from '../lib/tasks';
 import { C, TS } from '../theme';
 import { Chip, HScroll, Icon, IconName, T } from '../ui';
 
-const TIMES: [number, number, string][] = [
-  [9, 0, '9 الصبح'],
-  [13, 0, '1 الظهر'],
-  [17, 0, '5 العصر'],
-  [20, 0, '8 المسا'],
-];
+const HOURS = [9, 11, 13, 15, 17, 20];
 
 function Step({ icon, onPress, label }: { icon: IconName; onPress: () => void; label: string }) {
   return (
     <Pressable onPress={onPress} hitSlop={8} accessibilityLabel={label} style={({ pressed }) => ({ width: 34, height: 34, borderRadius: 10, backgroundColor: pressed ? C.lineHi : C.surfaceAlt, alignItems: 'center', justifyContent: 'center' })}>
-      <Icon name={icon} size={20} color={C.sub} />
+      <Icon name={icon} size={20} color={C.indigo} />
     </Pressable>
   );
 }
 
-/** A day and a time, with quick picks; `null` means "no date" */
-export function WhenPicker({ value, onChange, noneLabel = 'بدون' }: { value: Date | null; onChange: (d: Date | null) => void; noneLabel?: string }) {
+/** A day and a time: quick picks, then fine steps (a day, half an hour); `null` means "no date" */
+export function WhenPicker({ value, onChange, noneLabel }: { value: Date | null; onChange: (d: Date | null) => void; noneLabel?: string }) {
   const now = new Date();
   const today = startOfDay(now);
   const base = value ?? atTime(addDays(today, 1), 9);
-  const sameDay = (d: Date) => value && startOfDay(value).getTime() === startOfDay(d).getTime();
-  const days: [string, Date][] = [
-    ['اليوم', today],
-    ['بكرة', addDays(today, 1)],
-    ['بعد بكرة', addDays(today, 2)],
-    ['الاثنين الجاي', nextMonday(now)],
-  ].filter(([, d], i, all) => all.findIndex(([, e]) => (e as Date).getTime() === (d as Date).getTime()) === i) as [string, Date][];
+  const sameDay = (d: Date) => !!value && startOfDay(value).getTime() === startOfDay(d).getTime();
+  const days: [string, Date][] = [];
+  for (const [l, d] of [
+    [tx('اليوم', 'Today'), today],
+    [tx('غداً', 'Tomorrow'), addDays(today, 1)],
+    [tx('بعد غد', 'In 2 days'), addDays(today, 2)],
+    [tx('الاثنين القادم', 'Next Monday'), nextMonday(now)],
+  ] as [string, Date][]) {
+    if (!days.some(([, e]) => e.getTime() === d.getTime())) days.push([l, d]);
+  }
   const setDay = (d: Date) => onChange(atTime(d, base.getHours(), base.getMinutes()));
-  const setTime = (h: number, m: number) => onChange(atTime(value ?? today, h, m));
+  const setTime = (h: number) => onChange(atTime(value ?? today, h, 0));
   const shiftMin = (n: number) => onChange(new Date(base.getTime() + n * 60000));
 
   return (
     <View>
       <HScroll>
-        <Chip label={noneLabel} on={!value} onPress={() => onChange(null)} />
+        <Chip label={noneLabel ?? tx('دون موعد', 'None')} on={!value} onPress={() => onChange(null)} />
         {days.map(([l, d]) => (
-          <Chip key={l} label={l} on={!!sameDay(d)} onPress={() => setDay(d)} />
+          <Chip key={l} label={l} on={sameDay(d)} onPress={() => setDay(d)} />
         ))}
       </HScroll>
       {value && (
         <>
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.surface, borderWidth: 1.5, borderColor: C.line, borderRadius: 16, padding: 8, marginTop: 10 }}>
-            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
-              <Step icon="chevron-right" label="يوم قبل" onPress={() => onChange(addDays(value, -1))} />
-              <T w="semibold" size={TS.small} style={{ minWidth: 92 }} align="center">{dayLabel(value)}</T>
-              <Step icon="chevron-left" label="يوم بعد" onPress={() => onChange(addDays(value, 1))} />
+          <View style={{ flexDirection: D.row, alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.bg, borderRadius: 14, padding: 8, marginTop: 10 }}>
+            <View style={{ flexDirection: D.row, alignItems: 'center', gap: 6 }}>
+              <Step icon={D.rtl ? 'chevron-right' : 'chevron-left'} label={tx('اليوم السابق', 'Previous day')} onPress={() => onChange(addDays(value, -1))} />
+              <T w="medium" size={TS.small} style={{ minWidth: 88 }} align="center">{dayLabel(value)}</T>
+              <Step icon={D.fwd} label={tx('اليوم التالي', 'Next day')} onPress={() => onChange(addDays(value, 1))} />
             </View>
-            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
-              <Step icon="minus" label="نص ساعة قبل" onPress={() => shiftMin(-30)} />
-              <T w="semibold" size={TS.small} style={{ minWidth: 76 }} align="center">{timeLabel(value)}</T>
-              <Step icon="plus" label="نص ساعة بعد" onPress={() => shiftMin(30)} />
+            <View style={{ flexDirection: D.row, alignItems: 'center', gap: 6 }}>
+              <Step icon="minus" label={tx('قبل نصف ساعة', '30 minutes earlier')} onPress={() => shiftMin(-30)} />
+              <T w="medium" size={TS.small} style={{ minWidth: 70 }} align="center">{clock(value)}</T>
+              <Step icon="plus" label={tx('بعد نصف ساعة', '30 minutes later')} onPress={() => shiftMin(30)} />
             </View>
           </View>
           <View style={{ marginTop: 8 }}>
             <HScroll>
-              {TIMES.map(([h, m, l]) => (
-                <Chip key={l} label={l} on={value.getHours() === h && value.getMinutes() === m} onPress={() => setTime(h, m)} />
+              {HOURS.map((h) => (
+                <Chip key={h} label={clock(atTime(today, h))} on={value.getHours() === h && value.getMinutes() === 0} onPress={() => setTime(h)} />
               ))}
             </HScroll>
           </View>

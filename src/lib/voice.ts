@@ -4,15 +4,16 @@
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
+import { getLang, tx } from './i18n';
 
 export type DictationState = 'idle' | 'listening' | 'unsupported';
 
-const ERRORS: Record<string, string> = {
-  'not-allowed': 'لازم تسمح لغيث يستخدم المايك من إعدادات الجهاز.',
-  'service-not-allowed': 'خدمة تحويل الصوت مش مفعّلة على هالجهاز.',
-  network: 'تحويل الصوت بده إنترنت، تأكد من الشبكة.',
-  'audio-capture': 'ما قدرت أوصل للمايك.',
-  'language-not-supported': 'العربي مش مثبّت بخدمة الصوت على الجهاز.',
+const ERRORS: Record<string, () => string> = {
+  'not-allowed': () => tx('يرجى السماح لغيث باستخدام الميكروفون من إعدادات الجهاز.', 'Please allow Ghaith to use the microphone in your device settings.'),
+  'service-not-allowed': () => tx('خدمة تحويل الصوت غير مفعّلة على هذا الجهاز.', 'Speech recognition is not enabled on this device.'),
+  network: () => tx('تحويل الصوت يحتاج إلى اتصال بالإنترنت.', 'Speech recognition needs an internet connection.'),
+  'audio-capture': () => tx('تعذّر الوصول إلى الميكروفون.', 'Could not access the microphone.'),
+  'language-not-supported': () => tx('اللغة غير مثبّتة في خدمة الصوت على الجهاز.', 'This language is not installed in the device’s speech service.'),
 };
 
 function available(): boolean {
@@ -44,7 +45,7 @@ export function useDictation() {
 
   const begin = useCallback(() => {
     ExpoSpeechRecognitionModule.start({
-      lang: 'ar-AE',
+      lang: getLang() === 'en' ? 'en-US' : 'ar-AE',
       interimResults: true,
       continuous: true,
       maxAlternatives: 1,
@@ -86,7 +87,7 @@ export function useDictation() {
   useSpeechRecognitionEvent('error', (e) => {
     if (e.error === 'aborted' || e.error === 'no-speech' || e.error === 'speech-timeout') return;
     wanted.current = false;
-    setError(ERRORS[e.error] ?? 'صار خطأ بتحويل الصوت، جرّب كمان مرة.');
+    setError(ERRORS[e.error]?.() ?? tx('حدث خطأ في تحويل الصوت، حاول مرة أخرى.', 'Speech recognition failed, please try again.'));
   });
   useSpeechRecognitionEvent('end', () => {
     // Keep what was being said as heard
@@ -128,13 +129,13 @@ export function useDictation() {
       const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!perm.granted) {
         wanted.current = false;
-        setError(ERRORS['not-allowed']);
+        setError(ERRORS['not-allowed']());
         return;
       }
       begin();
     } catch {
       wanted.current = false;
-      setError('ما قدرت أشغّل المايك.');
+      setError(tx('تعذّر تشغيل الميكروفون.', 'Could not start the microphone.'));
       setState(available() ? 'idle' : 'unsupported');
     }
   }, [begin]);

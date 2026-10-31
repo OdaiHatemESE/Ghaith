@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, TS } from '../theme';
 import { Icon, T } from '../ui';
 import { useKeyboardReveal } from './KeyboardScroll';
+import { D } from '../lib/i18n';
 
 export function Sheet({
   visible,
@@ -39,7 +40,7 @@ export function Sheet({
           }}
         >
           <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: C.lineHi, marginTop: 10 }} />
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 6 }}>
+          <View style={{ flexDirection: D.row, alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 6 }}>
             <T w="bold" size={TS.h2}>{title}</T>
             <Pressable onPress={onClose} hitSlop={12} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="close" size={18} color={C.sub} />

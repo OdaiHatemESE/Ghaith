@@ -3,6 +3,7 @@ import React, { useId } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleProp, Text, TextInput, TextInputProps, TextProps, TextStyle, View, ViewStyle } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { C, F, GRADIENT, lift, R, tint, TS } from './theme';
+import { D, tx } from './lib/i18n';
 
 type Weight = 'regular' | 'medium' | 'semibold' | 'bold';
 
@@ -11,14 +12,14 @@ export function T({
   w = 'regular',
   size = TS.body,
   color = C.text,
-  align = 'right',
+  align = 'start',
   style,
   ...rest
-}: TextProps & { w?: Weight; size?: number; color?: string; align?: 'right' | 'left' | 'center'; style?: StyleProp<TextStyle> }) {
+}: TextProps & { w?: Weight; size?: number; color?: string; align?: 'right' | 'left' | 'center' | 'start' | 'end'; style?: StyleProp<TextStyle> }) {
   return (
     <Text
       {...rest}
-      style={[{ fontFamily: F[w], fontSize: size, color, textAlign: align, writingDirection: 'rtl', lineHeight: Math.round(size * 1.5) }, style]}
+      style={[{ fontFamily: F[w], fontSize: size, color, textAlign: align === 'start' ? D.align : align === 'end' ? D.alignEnd : align, writingDirection: D.writing, lineHeight: Math.round(size * 1.5) }, style]}
     />
   );
 }
@@ -69,7 +70,7 @@ export function IconButton({ icon, onPress, label, size = 42, color = C.indigo }
   );
 }
 
-/** Horizontal scroller that starts from the right edge (RTL) */
+/** Horizontal scroller that starts from the reading edge */
 export function HScroll({ children, gap = 8, style }: { children: React.ReactNode; gap?: number; style?: StyleProp<ViewStyle> }) {
   const ref = React.useRef<ScrollView>(null);
   return (
@@ -77,8 +78,8 @@ export function HScroll({ children, gap = 8, style }: { children: React.ReactNod
       ref={ref}
       horizontal
       showsHorizontalScrollIndicator={false}
-      onContentSizeChange={() => ref.current?.scrollToEnd({ animated: false })}
-      contentContainerStyle={[{ flexDirection: 'row-reverse', gap, paddingVertical: 2 }, style]}
+      onContentSizeChange={() => D.rtl && ref.current?.scrollToEnd({ animated: false })}
+      contentContainerStyle={[{ flexDirection: D.row, gap, paddingVertical: 2 }, style]}
     >
       {children}
     </ScrollView>
@@ -92,7 +93,7 @@ export function Chip({ label, on, onPress, icon, color = C.glow }: { label: stri
       accessibilityRole="button"
       accessibilityState={{ selected: on }}
       style={{
-        flexDirection: 'row-reverse',
+        flexDirection: D.row,
         alignItems: 'center',
         gap: 6,
         paddingHorizontal: 14,
@@ -112,7 +113,7 @@ export function Chip({ label, on, onPress, icon, color = C.glow }: { label: stri
 /** Small read-only tag: kind, category, time */
 export function Tag({ label, color = C.indigo, bg, icon }: { label: string; color?: string; bg?: string; icon?: IconName }) {
   return (
-    <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 2, borderRadius: R.pill, backgroundColor: bg ?? tint(color, 0.1) }}>
+    <View style={{ flexDirection: D.row, alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 2, borderRadius: R.pill, backgroundColor: bg ?? tint(color, 0.1) }}>
       {icon && <Icon name={icon} size={12} color={color} />}
       <T size={TS.tiny} w="medium" color={color}>{label}</T>
     </View>
@@ -122,7 +123,7 @@ export function Tag({ label, color = C.indigo, bg, icon }: { label: string; colo
 /** Two or three options in one rounded track */
 export function Segmented<K extends string>({ value, options, onChange }: { value: K; options: [K, string][]; onChange: (k: K) => void }) {
   return (
-    <View style={{ flexDirection: 'row-reverse', backgroundColor: C.surfaceAlt, borderRadius: R.pill, padding: 4 }}>
+    <View style={{ flexDirection: D.row, backgroundColor: C.surfaceAlt, borderRadius: R.pill, padding: 4 }}>
       {options.map(([k, label]) => {
         const on = k === value;
         return (
@@ -152,7 +153,7 @@ export function PrimaryButton({ label, onPress, busy = false, disabled = false, 
         {
           height: 54,
           borderRadius: R.pill,
-          flexDirection: 'row-reverse',
+          flexDirection: D.row,
           justifyContent: 'center',
           alignItems: 'center',
           gap: 8,
@@ -194,7 +195,7 @@ export function GhostButton({ label, onPress, icon, color = C.indigo, style }: {
           backgroundColor: pressed ? C.surfaceAlt : C.surface,
           borderWidth: 1.5,
           borderColor: C.lineHi,
-          flexDirection: 'row-reverse',
+          flexDirection: D.row,
           alignItems: 'center',
           justifyContent: 'center',
           gap: 6,
@@ -242,7 +243,7 @@ export function Field({
   return (
     <View style={{ marginTop: label ? 14 : 0 }}>
       {!!label && <T w="semibold" size={TS.small} color={C.sub} style={{ marginBottom: 6 }}>{label}</T>}
-      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: C.surface, borderRadius: 14, borderWidth: 1, borderColor: C.line }}>
+      <View style={{ flexDirection: D.row, alignItems: 'center', backgroundColor: C.surface, borderRadius: 14, borderWidth: 1, borderColor: C.line }}>
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -265,8 +266,8 @@ export function Field({
             fontFamily: F.regular,
             fontSize: TS.body,
             color: C.text,
-            textAlign: 'right',
-            writingDirection: ltr ? 'ltr' : 'rtl',
+            textAlign: ltr ? 'left' : D.align,
+            writingDirection: ltr ? 'ltr' : D.writing,
             paddingHorizontal: 14,
             paddingVertical: 13,
             minHeight: multiline ? minHeight ?? 76 : undefined,
@@ -275,7 +276,7 @@ export function Field({
           }}
         />
         {secure && (
-          <Pressable onPress={() => setHidden((h) => !h)} hitSlop={10} style={{ paddingHorizontal: 12 }} accessibilityLabel={hidden ? 'إظهار كلمة المرور' : 'إخفاء كلمة المرور'}>
+          <Pressable onPress={() => setHidden((h) => !h)} hitSlop={10} style={{ paddingHorizontal: 12 }} accessibilityLabel={hidden ? tx('إظهار كلمة المرور', 'Show password') : tx('إخفاء كلمة المرور', 'Hide password')}>
             <Icon name={hidden ? 'eye-outline' : 'eye-off-outline'} size={20} color={C.faint} />
           </Pressable>
         )}
@@ -291,7 +292,7 @@ export function Card({ children, style }: { children: React.ReactNode; style?: S
 export function ErrorText({ text }: { text: string }) {
   if (!text) return null;
   return (
-    <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: tint(C.late, 0.09), borderRadius: 12, padding: 10, marginTop: 14 }}>
+    <View style={{ flexDirection: D.row, alignItems: 'center', gap: 6, backgroundColor: tint(C.late, 0.09), borderRadius: 12, padding: 10, marginTop: 14 }}>
       <Icon name="alert-circle-outline" size={18} color={C.late} />
       <T size={TS.small} color={C.late} style={{ flex: 1 }}>{text}</T>
     </View>
@@ -309,19 +310,19 @@ export function ListRow({ icon, title, detail, onPress, last, danger, right }: {
     <Pressable
       onPress={onPress}
       disabled={!onPress}
-      style={({ pressed }) => ({ flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 13, backgroundColor: pressed ? C.bg : 'transparent' })}
+      style={({ pressed }) => ({ flexDirection: D.row, alignItems: 'center', paddingHorizontal: 16, paddingVertical: 13, backgroundColor: pressed ? C.bg : 'transparent' })}
     >
       {icon && (
         <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: tint(color, 0.12), alignItems: 'center', justifyContent: 'center' }}>
           <Icon name={icon} size={19} color={color} />
         </View>
       )}
-      <View style={{ flex: 1, marginRight: icon ? 12 : 0 }}>
+      <View style={{ flex: 1, [D.rtl ? 'marginRight' : 'marginLeft']: icon ? 12 : 0 }}>
         <T w="medium" color={danger ? C.late : C.text}>{title}</T>
         {!!detail && <T size={TS.small} color={C.sub}>{detail}</T>}
       </View>
       {right}
-      {!last && <View style={{ position: 'absolute', bottom: 0, left: 16, right: icon ? 64 : 16, height: 1, backgroundColor: C.line }} />}
+      {!last && <View style={{ position: 'absolute', bottom: 0, [D.end]: 16, [D.start]: icon ? 64 : 16, height: 1, backgroundColor: C.line }} />}
     </Pressable>
   );
 }
@@ -335,7 +336,7 @@ export function Toggle({ value, onChange, label }: { value: boolean; onChange: (
       accessibilityState={{ checked: value }}
       accessibilityLabel={label}
       hitSlop={8}
-      style={{ width: 48, height: 28, borderRadius: 14, padding: 3, backgroundColor: value ? C.teal : C.lineHi, flexDirection: 'row', justifyContent: value ? 'flex-start' : 'flex-end' }}
+      style={{ width: 48, height: 28, borderRadius: 14, padding: 3, backgroundColor: value ? C.teal : C.lineHi, flexDirection: D.row, justifyContent: value ? 'flex-end' : 'flex-start' }}
     >
       <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff' }} />
     </Pressable>
@@ -371,7 +372,7 @@ export function Check({ on, onPress, size = 26, label }: { on: boolean; onPress?
 /** Section title with an optional link on the left (as in قديش) */
 export function SectionHead({ title, action, onAction, color = C.text }: { title: string; action?: string; onAction?: () => void; color?: string }) {
   return (
-    <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginTop: 28, marginBottom: 12 }}>
+    <View style={{ flexDirection: D.row, alignItems: 'center', justifyContent: 'space-between', marginTop: 28, marginBottom: 12 }}>
       <T w="bold" size={TS.h2} color={color}>{title}</T>
       {!!action && (
         <Pressable onPress={onAction} hitSlop={10}>

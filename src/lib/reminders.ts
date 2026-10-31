@@ -4,7 +4,8 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { Settings } from './store';
-import { addDays, anchor, atTime, groupOf, isLate, KINDS, startOfDay, Task, timeLabel } from './tasks';
+import { getLang, tx } from './i18n';
+import { addDays, anchor, atTime, dayLabel, groupOf, isLate, KINDS, startOfDay, Task, timeLabel } from './tasks';
 
 export const notificationsSupported = Platform.OS === 'android' || Platform.OS === 'ios';
 
@@ -18,21 +19,21 @@ if (notificationsSupported) {
   });
 }
 
-let prepared = false;
+let prepared: string | null = null;
 async function prepare() {
-  if (prepared || !notificationsSupported) return;
-  prepared = true;
+  if (prepared === getLang() || !notificationsSupported) return;
+  prepared = getLang();
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync(CHANNEL, {
-      name: 'تذكيرات غيث',
-      description: 'تذكير بالمهام والمتابعات، وملخص الصبح والمسا',
+      name: tx('تذكيرات غيث', 'Ghaith reminders'),
+      description: tx('تذكير بالمهام والمتابعات، وملخص الصباح والمساء', 'Task and follow-up reminders, plus the morning and evening summaries'),
       importance: Notifications.AndroidImportance.HIGH,
     });
   }
   await Notifications.setNotificationCategoryAsync(CATEGORY, [
-    { identifier: 'done', buttonTitle: 'خلصت ✓', options: { opensAppToForeground: true } },
-    { identifier: 'hour', buttonTitle: 'بعد ساعة', options: { opensAppToForeground: true } },
-    { identifier: 'tomorrow', buttonTitle: 'بكرة الصبح', options: { opensAppToForeground: true } },
+    { identifier: 'done', buttonTitle: tx('أُنجزت ✓', 'Done ✓'), options: { opensAppToForeground: true } },
+    { identifier: 'hour', buttonTitle: tx('بعد ساعة', 'In an hour'), options: { opensAppToForeground: true } },
+    { identifier: 'tomorrow', buttonTitle: tx('صباح الغد', 'Tomorrow morning'), options: { opensAppToForeground: true } },
   ]);
 }
 
@@ -53,15 +54,15 @@ export async function notificationPermission(ask = false): Promise<PermissionSta
 type Planned = { at: Date; title: string; body: string; data: Record<string, string>; actions?: boolean };
 
 function taskBody(t: Task): string {
-  const who = t.person ? ` ${t.person}` : '';
-  if (t.kind === 'waiting') return `لسا ناطر رد${who ? ' من' + who : ''}. بدك تلحقه؟`;
-  if (t.kind === 'reply') return `لسا ما رديت${who ? ' على' + who : ''}.`;
+  const who = t.person;
+  if (t.kind === 'waiting') return who ? tx(`ما زلت بانتظار رد ${who}. هل تتابع معه؟`, `Still waiting on ${who}. Follow up?`) : tx('ما زلت بانتظار الرد. هل تتابع؟', 'Still waiting for a reply. Follow up?');
+  if (t.kind === 'reply') return who ? tx(`لم تردّ على ${who} بعد.`, `You haven’t replied to ${who} yet.`) : tx('لم تردّ بعد.', 'You haven’t replied yet.');
   if (t.due_at) {
     const d = new Date(t.due_at);
     const sameDay = startOfDay(d).getTime() === startOfDay(new Date()).getTime();
-    return sameDay ? `موعدها اليوم ${timeLabel(d)}` : `${KINDS.todo.label} · موعدها ${d.getDate()}/${d.getMonth() + 1} ${timeLabel(d)}`;
+    return sameDay ? tx(`موعدها اليوم ${timeLabel(d)}`, `Due today at ${timeLabel(d)}`) : tx(`موعدها ${dayLabel(d)} ${timeLabel(d)}`, `Due ${dayLabel(d)} at ${timeLabel(d)}`);
   }
-  return 'لا تنساها';
+  return tx('لا تنسَها.', 'Don’t forget it.');
 }
 
 const parseHM = (hm: string | null) => {
@@ -74,7 +75,7 @@ const shortList = (list: Task[]) =>
   list
     .slice(0, 3)
     .map((t) => '• ' + t.title)
-    .join('\n') + (list.length > 3 ? `\nو${list.length - 3} غيرهم` : '');
+    .join('\n') + (list.length > 3 ? tx(`\nو${list.length - 3} غيرها`, `\nand ${list.length - 3} more`) : '');
 
 /** Everything that should ring in the coming week, nearest first */
 export function plan(tasks: Task[], settings: Settings, now = new Date()): Planned[] {
@@ -88,7 +89,7 @@ export function plan(tasks: Task[], settings: Settings, now = new Date()): Plann
     // At the deadline itself, unless the reminder already rings then
     const due = t.due_at ? new Date(t.due_at).getTime() : 0;
     if (due > now.getTime() && (!t.remind_at || new Date(t.remind_at).getTime() < due - 10 * 60000)) {
-      out.push({ at: new Date(due), title: `وصل الموعد: ${t.title}`, body: 'خلصت؟ إذا لا، أجّلها لوقت يناسبك.', data: { taskId: t.id }, actions: true });
+      out.push({ at: new Date(due), title: tx(`حان الموعد: ${t.title}`, `Due now: ${t.title}`), body: tx('هل أنجزتها؟ إن لم تفعل، أجّلها إلى وقت يناسبك.', 'Done? If not, move it to a time that suits you.'), data: { taskId: t.id }, actions: true });
     }
   }
 
@@ -106,11 +107,11 @@ export function plan(tasks: Task[], settings: Settings, now = new Date()): Plann
         const late = open.filter((t) => isLate(t, at));
         const waiting = open.filter((t) => t.kind === 'waiting').length;
         const parts: string[] = [];
-        if (due.length) parts.push(`${due.length} لليوم`);
-        if (late.length) parts.push(`${late.length} متأخر`);
-        if (waiting) parts.push(`ناطر رد على ${waiting}`);
-        const body = parts.length ? `${parts.join('، ')}\n${shortList([...late, ...due])}` : 'ما عندك شيء مستعجل اليوم. احكيلي إذا في شيء جديد.';
-        out.push({ at, title: 'صباح الخير، هاد يومك', body, data: { screen: 'home' } });
+        if (due.length) parts.push(tx(`${due.length} لليوم`, `${due.length} today`));
+        if (late.length) parts.push(tx(`${late.length} متأخرة`, `${late.length} overdue`));
+        if (waiting) parts.push(tx(`${waiting} بانتظار رد`, `waiting on ${waiting}`));
+        const body = parts.length ? `${parts.join(tx('، ', ', '))}\n${shortList([...late, ...due])}` : tx('لا شيء عاجل اليوم. أخبر غيث إن استجد شيء.', 'Nothing urgent today. Tell Ghaith if anything comes up.');
+        out.push({ at, title: tx('صباح الخير، هذا يومك', 'Good morning, here’s your day'), body, data: { screen: 'home' } });
       }
     }
     if (evening) {
@@ -121,7 +122,7 @@ export function plan(tasks: Task[], settings: Settings, now = new Date()): Plann
           return g === 'today' || g === 'late';
         });
         if (left.length) {
-          out.push({ at, title: 'شو صار مع مهام اليوم؟', body: `باقي ${left.length} مفتوحين. علّم اللي خلص، أو احكيلي أأجّل الباقي.\n${shortList(left)}`, data: { screen: 'home' } });
+          out.push({ at, title: tx('ماذا عن مهام اليوم؟', 'How did today go?'), body: tx(`ما زالت ${left.length} مفتوحة. علّم ما أنجزته، أو أجّل الباقي.`, `${left.length} still open. Mark what’s done, or move the rest.`) + `\n${shortList(left)}`, data: { screen: 'home' } });
         }
       }
     }

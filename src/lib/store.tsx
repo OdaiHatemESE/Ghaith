@@ -4,14 +4,21 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { AppState } from 'react-native';
 import { loginEmail } from './config';
 import { friendlyError, supabase } from './supabase';
+import { getLang, tx } from './i18n';
 import { Task, TASK_FIELDS } from './tasks';
 
 export type Voice = 'hamdan' | 'fatima' | 'device';
 export type Settings = { morning_time: string | null; evening_time: string | null; speak_replies: boolean; follow_up_days: number; voice: Voice; keep_listening: boolean };
 export const DEFAULT_SETTINGS: Settings = { morning_time: '08:00', evening_time: '20:00', speak_replies: true, follow_up_days: 3, voice: 'hamdan', keep_listening: true };
 export type Source = 'voice' | 'text' | 'email';
-/** A task غيث pulled out of a capture, not saved yet */
-export type Draft = Pick<Task, 'title' | 'kind' | 'category' | 'priority' | 'person' | 'due_at' | 'remind_at' | 'repeat' | 'notes'> & { similar_to: string | null };
+export type Fields = Pick<Task, 'title' | 'kind' | 'category' | 'priority' | 'person' | 'due_at' | 'remind_at' | 'repeat' | 'notes'>;
+/** A task being edited before it is saved (a new one from a capture, or an edit غيث proposed) */
+export type Draft = Fields & { similar_to?: string | null };
+/** One change غيث proposes from a capture; nothing is applied until the user saves */
+export type Proposal =
+  | { op: 'add'; task: Fields }
+  | { op: 'update'; id: string; current: Fields; changes: Partial<Fields>; change: string | null; unsure: boolean }
+  | { op: 'complete' | 'delete'; id: string; current: Fields; unsure: boolean };
 
 type Status = 'loading' | 'out' | 'in';
 
@@ -24,10 +31,10 @@ type Store = {
   signIn: (username: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
-  /** Sends one capture to غيث; resolves with the draft tasks (or throws a readable error) */
-  capture: (text: string, source: Source) => Promise<Draft[]>;
-  /** Saves the drafts the user kept; returns an error sentence or null */
-  addDrafts: (drafts: Draft[], source: Source) => Promise<string | null>;
+  /** Sends one capture to غيث; resolves with the proposed changes (or throws a readable error) */
+  capture: (text: string, source: Source) => Promise<Proposal[]>;
+  /** Applies the proposals the user kept; returns an error sentence or null */
+  apply: (list: Proposal[], source: Source) => Promise<string | null>;
   complete: (id: string) => Promise<void>;
   reopen: (id: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
@@ -111,10 +118,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
   }, []);
 
-  const capture = useCallback(async (text: string, source: Source): Promise<Draft[]> => {
-    const { data, error } = await supabase.functions.invoke('ghaith-capture', { body: { text, source } });
+  const capture = useCallback(async (text: string, source: Source): Promise<Proposal[]> => {
+    const { data, error } = await supabase.functions.invoke('ghaith-capture', { body: { text, source, lang: getLang() } });
     if (error) {
-      let message = 'ما قدرت أوصل لغيث، تأكد من الإنترنت وجرّب كمان مرة.';
+      let message = tx('تعذّر الوصول إلى غيث، تحقّق من الإنترنت وحاول مرة أخرى.', 'Could not reach Ghaith. Check your connection and try again.');
       try {
         const ctx = (error as { context?: Response }).context;
         const body = ctx ? await ctx.json() : null;
@@ -124,16 +131,30 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
       throw new Error(message);
     }
-    return (data?.tasks ?? []) as Draft[];
+    return (data?.actions ?? []) as Proposal[];
   }, []);
 
-  const addDrafts = useCallback(
-    async (drafts: Draft[], source: Source) => {
-      if (!drafts.length) return null;
-      const rows = drafts.map(({ similar_to: _s, ...d }) => ({ ...d, source: source === 'email' ? 'text' : source }));
-      const { error } = await supabase.from('ghaith_tasks').insert(rows);
+  const apply = useCallback(
+    async (list: Proposal[], source: Source) => {
+      const errors: string[] = [];
+      const adds = list.filter((p): p is Extract<Proposal, { op: 'add' }> => p.op === 'add');
+      if (adds.length) {
+        const { error } = await supabase.from('ghaith_tasks').insert(adds.map((p) => ({ ...p.task, source: source === 'email' ? 'text' : source })));
+        if (error) errors.push(friendlyError(error));
+      }
+      for (const p of list) {
+        const res =
+          p.op === 'update'
+            ? await supabase.from('ghaith_tasks').update(p.changes).eq('id', p.id)
+            : p.op === 'complete'
+              ? await supabase.rpc('ghaith_complete_task', { p_id: p.id })
+              : p.op === 'delete'
+                ? await supabase.from('ghaith_tasks').delete().eq('id', p.id)
+                : null;
+        if (res?.error) errors.push(friendlyError(res.error));
+      }
       await loadTasks();
-      return error ? friendlyError(error) : null;
+      return errors[0] ?? null;
     },
     [loadTasks],
   );
@@ -194,8 +215,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const status: Status = session === undefined ? 'loading' : session ? 'in' : 'out';
   const value = useMemo(
-    () => ({ status, name, tasks, settings, loaded, signIn, signOut, refresh, capture, addDrafts, complete, reopen, remove, save, saveSettings }),
-    [status, name, tasks, settings, loaded, signIn, signOut, refresh, capture, addDrafts, complete, reopen, remove, save, saveSettings],
+    () => ({ status, name, tasks, settings, loaded, signIn, signOut, refresh, capture, apply, complete, reopen, remove, save, saveSettings }),
+    [status, name, tasks, settings, loaded, signIn, signOut, refresh, capture, apply, complete, reopen, remove, save, saveSettings],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

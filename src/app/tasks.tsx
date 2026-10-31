@@ -6,12 +6,12 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { TaskRow } from '../components/TaskRow';
 import { TaskSheet } from '../components/TaskSheet';
 import { useStore } from '../lib/store';
-import { dayLabel, GroupKey, groupOf, GROUPS, Kind, KINDS, sortTasks, Task } from '../lib/tasks';
+import { dayLabel, GROUP_ORDER, GroupKey, groupOf, GROUPS, Kind, KINDS, sortTasks, Task } from '../lib/tasks';
 import { useNow } from '../lib/useNow';
 import { C, TS } from '../theme';
 import { Card, Chip, HScroll, IconButton, Segmented, T } from '../ui';
+import { D, tx } from '../lib/i18n';
 
-const ORDER: GroupKey[] = ['late', 'today', 'tomorrow', 'week', 'later', 'someday'];
 
 /** Every task: open ones by when they're due, done ones by the day they were finished */
 export default function Tasks() {
@@ -41,7 +41,7 @@ export default function Tasks() {
       const g = groupOf(t, now);
       m.set(g, [...(m.get(g) ?? []), t]);
     }
-    return ORDER.filter((g) => m.has(g)).map((g) => ({ key: g as string, title: GROUPS[g], list: m.get(g)!, late: g === 'late' }));
+    return GROUP_ORDER.filter((g) => m.has(g)).map((g) => ({ key: g as string, title: GROUPS[g].label, list: m.get(g)!, late: g === 'late' }));
   }, [open, now]);
 
   const doneDays = useMemo(() => {
@@ -62,17 +62,17 @@ export default function Tasks() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScreenHeader title="المهام" right={<IconButton icon="plus" label="أضف مهمة" onPress={() => setSheet({ task: null })} />} />
+      <ScreenHeader title={tx('المهام', 'Tasks')} right={<IconButton icon="plus" label={tx('إضافة مهمة', 'Add task')} onPress={() => setSheet({ task: null })} />} />
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 40 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => (setRefreshing(true), await refresh(), setRefreshing(false))} tintColor={C.glow} />}
       >
-        <Segmented value={view} onChange={setView} options={[['open', 'مفتوحة'], ['done', 'خلصت']]} />
+        <Segmented value={view} onChange={setView} options={[['open', tx('مفتوحة', 'Open')], ['done', tx('منجزة', 'Done')]]} />
 
         {view === 'open' && (
           <View style={{ marginTop: 12 }}>
             <HScroll>
-              <Chip label="الكل" on={!kind} onPress={() => setKind(null)} />
+              <Chip label={tx('الكل', 'All')} on={!kind} onPress={() => setKind(null)} />
               {(['todo', 'waiting', 'reply'] as Kind[]).map((k) => (
                 <Chip key={k} label={`${KINDS[k].label} ${counts[k]}`} icon={KINDS[k].icon} color={KINDS[k].color} on={kind === k} onPress={() => setKind(kind === k ? null : k)} />
               ))}
@@ -82,7 +82,7 @@ export default function Tasks() {
 
         {sections.map((g) => (
           <View key={g.key} style={{ marginTop: 24 }}>
-            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <View style={{ flexDirection: D.row, alignItems: 'center', gap: 8, marginBottom: 10 }}>
               <T w="bold" size={TS.h2} color={g.late ? C.late : C.text}>{g.title}</T>
               <T size={TS.small} color={C.faint}>{g.list.length}</T>
             </View>
@@ -96,7 +96,7 @@ export default function Tasks() {
 
         {!sections.length && (
           <T color={C.sub} align="center" style={{ marginTop: 48 }}>
-            {view === 'open' ? (kind ? 'ما في مهام من هالنوع.' : 'ما في مهام مفتوحة. ارجع للرئيسية وسجّل اللي عليك.') : 'لما تخلّص مهمة بتطلع هون.'}
+            {view === 'open' ? (kind ? tx('لا توجد مهام من هذا النوع.', 'No tasks of this type.') : tx('لا توجد مهام مفتوحة.', 'No open tasks.')) : tx('ستظهر هنا المهام التي تنجزها.', 'Tasks you finish will show up here.')}
           </T>
         )}
       </ScrollView>

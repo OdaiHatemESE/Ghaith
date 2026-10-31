@@ -4,6 +4,7 @@ import { AppState, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, lift, TS } from '../theme';
 import { Icon, T } from '../ui';
+import { D, tx } from '../lib/i18n';
 
 /**
  * Over-the-air updates: every time the app opens or comes back to the front it checks for a newer version of the
@@ -51,10 +52,10 @@ export function AutoUpdate() {
     <View pointerEvents="box-none" style={{ position: 'absolute', top: insets.top + 8, left: 16, right: 16, alignItems: 'center' }}>
       <Pressable
         onPress={() => Updates.reloadAsync().catch(() => {})}
-        style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10, backgroundColor: C.surface, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: C.line, ...lift }}
+        style={{ flexDirection: D.row, alignItems: 'center', gap: 10, backgroundColor: C.surface, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: C.line, ...lift }}
       >
         <Icon name="auto-fix" size={18} color={C.glow} />
-        <T size={TS.small} w="medium">في نسخة جديدة من غيث، بتتحدّث خلال {Math.max(count, 0)}…</T>
+        <T size={TS.small} w="medium">{tx(`يتوفر إصدار جديد من غيث، سيتم التحديث خلال ${Math.max(count, 0)}…`, `A new version of Ghaith is ready, updating in ${Math.max(count, 0)}…`)}</T>
       </Pressable>
     </View>
   );
@@ -62,9 +63,10 @@ export function AutoUpdate() {
 
 /** "Version 1.0.0 · updated 31/10 05:58" for the settings screen */
 export function versionLabel(appVersion: string): string {
-  if (!Updates.isEnabled) return `النسخة ${appVersion}`;
+  if (!Updates.isEnabled) return tx(`الإصدار ${appVersion}`, `Version ${appVersion}`);
   const d = Updates.createdAt;
-  if (Updates.isEmbeddedLaunch || !d) return `النسخة ${appVersion} · الأصلية`;
+  if (Updates.isEmbeddedLaunch || !d) return tx(`الإصدار ${appVersion} · الأصلي`, `Version ${appVersion} · original`);
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `النسخة ${appVersion} · تحديث ${d.getDate()}/${d.getMonth() + 1} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const at = `${d.getDate()}/${d.getMonth() + 1} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return tx(`الإصدار ${appVersion} · تحديث ${at}`, `Version ${appVersion} · updated ${at}`);
 }

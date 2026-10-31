@@ -1,23 +1,33 @@
-// The capture flow: talk (or type / paste an email) once -> غيث splits it into draft tasks -> review -> save.
+// The capture flow: talk (or type / paste an email) once -> غيث turns it into proposed changes (new tasks, edits,
+// tasks done, tasks removed) -> review -> apply.
 import React, { useState } from 'react';
 import { BackHandler, Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
-import { Draft, Source } from '../lib/store';
+import { D, getLang, tx } from '../lib/i18n';
+import { Draft, Fields, Proposal, Source } from '../lib/store';
 import { CATS, KINDS, shortWhen } from '../lib/tasks';
 import { useTick } from '../lib/useTick';
 import { C, liftMd, R, tint, TS } from '../theme';
-import { Card, Check, ErrorText, Field, GhostButton, Icon, IconButton, Num, PrimaryButton, T } from '../ui';
+import { Card, Check, ErrorText, Field, GhostButton, Icon, IconButton, IconName, Num, PrimaryButton, T } from '../ui';
 import { Mark } from './Logo';
 import { Sheet } from './Sheet';
 import { TaskSheet } from './TaskSheet';
 
-/** "مهمة وحدة"، "مهمتين"، "4 مهام"، "12 مهمة" */
+/** "مهمة واحدة"، "مهمتان"، "4 مهام"، "12 مهمة" / "1 task", "4 tasks" */
 export function countTasks(n: number): string {
-  if (n === 1) return 'مهمة وحدة';
-  if (n === 2) return 'مهمتين';
+  if (getLang() === 'en') return `${n} ${n === 1 ? 'task' : 'tasks'}`;
+  if (n === 1) return 'مهمة واحدة';
+  if (n === 2) return 'مهمتان';
   if (n <= 10) return `${n} مهام`;
   return `${n} مهمة`;
+}
+function countChanges(n: number): string {
+  if (getLang() === 'en') return `${n} ${n === 1 ? 'change' : 'changes'}`;
+  if (n === 1) return 'تغيير واحد';
+  if (n === 2) return 'تغييران';
+  if (n <= 10) return `${n} تغييرات`;
+  return `${n} تغييراً`;
 }
 
 /** Soft violet and teal light behind the full-screen capture views */
@@ -68,12 +78,12 @@ export function RecordView({ text, level, error, startedAt, onDone, onCancel }: 
     <Modal visible animationType="slide" onRequestClose={onCancel} statusBarTranslucent>
       <View style={{ flex: 1, backgroundColor: C.bg }}>
         <Glow />
-        <View style={{ paddingTop: insets.top + 12, paddingHorizontal: 20, flexDirection: 'row-reverse' }}>
-          <IconButton icon="close" label="إلغاء" onPress={onCancel} />
+        <View style={{ paddingTop: insets.top + 12, paddingHorizontal: 16, flexDirection: D.row }}>
+          <IconButton icon="close" label={tx('إلغاء', 'Cancel')} onPress={onCancel} />
         </View>
         <View style={{ alignItems: 'center', marginTop: 8, paddingHorizontal: 24 }}>
-          <T w="bold" size={TS.h1} align="center" style={{ lineHeight: 36 }}>احكي، وأنا برتّب</T>
-          <T size={TS.small} color={C.sub} align="center">قول كل المهام مرة وحدة، بأي ترتيب</T>
+          <T w="bold" size={TS.h1} align="center" style={{ lineHeight: 36 }}>{tx('تحدّث، وغيث يرتّب', 'Talk, Ghaith organises')}</T>
+          <T size={TS.small} color={C.sub} align="center">{tx('اذكر كل ما لديك دفعة واحدة: مهام جديدة، تعديلات، أو ما أنجزته', 'Say it all at once: new tasks, changes, or what you have done')}</T>
         </View>
 
         <View style={{ alignItems: 'center', justifyContent: 'center', height: 230, marginTop: 6 }}>
@@ -106,20 +116,24 @@ export function RecordView({ text, level, error, startedAt, onDone, onCancel }: 
           <Num size={TS.body}>{`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`}</Num>
         </View>
 
-        <ScrollView style={{ flex: 1, marginTop: 14 }} contentContainerStyle={{ paddingHorizontal: 20 }}>
-          <View style={{ backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: 20, padding: 16, minHeight: 96 }}>
-            <T w="medium" size={TS.tiny} color={C.glow}>{text ? 'عم بسمعك…' : 'جاهز، احكي…'}</T>
-            <T size={TS.body} color={text ? C.text : C.faint}>
-              {text || 'مثلاً: «بكرة الصبح لازم أرد على إيميل خالد، وذكّرني الخميس أجدد ملكية السيارة، وناطر رد سارة على عرض السعر»'}
+        <ScrollView style={{ flex: 1, marginTop: 14 }} contentContainerStyle={{ paddingHorizontal: 16 }}>
+          <View style={{ backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: R.card, padding: 16, minHeight: 96 }}>
+            <T w="medium" size={TS.tiny} color={C.glow}>{text ? tx('أستمع إليك…', 'Listening…') : tx('جاهز، تفضّل…', 'Ready, go ahead…')}</T>
+            <T color={text ? C.text : C.faint}>
+              {text ||
+                tx(
+                  'مثال: «غداً صباحاً أرد على بريد خالد، وأجّل تأمين السيارة للخميس، ورد قسم التقنية وصلني»',
+                  'e.g. “Reply to Khalid’s email tomorrow morning, move the car insurance to Thursday, and IT already replied”',
+                )}
             </T>
           </View>
           <ErrorText text={error} />
         </ScrollView>
 
-        <View style={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 20, paddingTop: 10, gap: 10 }}>
-          <PrimaryButton label="خلصت، رتّبهم" icon="stop-circle-outline" onPress={onDone} disabled={!text} />
+        <View style={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 20, paddingTop: 10, gap: 10 }}>
+          <PrimaryButton label={tx('انتهيت، رتّبها', 'Done, organise it')} icon="stop-circle-outline" onPress={onDone} disabled={!text} />
           <View style={{ flexDirection: 'row' }}>
-            <GhostButton label="إلغاء" onPress={onCancel} />
+            <GhostButton label={tx('إلغاء', 'Cancel')} onPress={onCancel} />
           </View>
         </View>
       </View>
@@ -134,14 +148,24 @@ export function TypeSheet({ mode, onSubmit, onClose }: { mode: 'text' | 'email';
   return (
     <Sheet
       visible
-      title={email ? 'الصق الإيميل' : 'اكتب لغيث'}
+      title={email ? tx('لصق بريد إلكتروني', 'Paste an email') : tx('اكتب لغيث', 'Write to Ghaith')}
       onClose={onClose}
-      footer={<PrimaryButton label="رتّبها مهام" icon="creation" onPress={() => text.trim() && onSubmit(text.trim())} disabled={!text.trim()} />}
+      footer={<PrimaryButton label={tx('رتّبها', 'Organise')} icon="creation" onPress={() => text.trim() && onSubmit(text.trim())} disabled={!text.trim()} />}
     >
       <T size={TS.small} color={C.sub} style={{ marginBottom: 10 }}>
-        {email ? 'انسخ نص الإيميل (أو جزء منه) والصقه هون، وغيث بيطلّع منه شو المطلوب منك وشو ناطر.' : 'اكتب كل اللي ببالك مرة وحدة، وغيث بيقسّمه مهام.'}
+        {email
+          ? tx('انسخ نص البريد (أو جزءاً منه) والصقه هنا، وسيستخرج غيث المطلوب منك وما تنتظره من غيرك.', 'Copy the email text (or part of it) and paste it here. Ghaith will pull out what you need to do and what you are waiting for.')
+          : tx('اكتب كل ما لديك دفعة واحدة: مهام جديدة، أو تعديل مهمة، أو ما أنجزته.', 'Write everything at once: new tasks, changes to a task, or what you have done.')}
       </T>
-      <Field value={text} onChangeText={setText} placeholder={email ? 'الصق نص الإيميل هون…' : 'مثلاً: بكرة لازم أبعت التقرير للمدير، وناطر رد قسم IT على طلب الصلاحيات'} multiline autoFocus maxLength={6000} minHeight={email ? 200 : 130} />
+      <Field
+        value={text}
+        onChangeText={setText}
+        placeholder={email ? tx('الصق نص البريد هنا…', 'Paste the email here…') : tx('مثال: أرسل التقرير للمدير غداً، وأجّل اجتماع اللجنة إلى الإثنين', 'e.g. Send the report to the manager tomorrow, and move the committee meeting to Monday')}
+        multiline
+        autoFocus
+        maxLength={6000}
+        minHeight={email ? 200 : 130}
+      />
       <View style={{ height: 8 }} />
     </Sheet>
   );
@@ -160,55 +184,81 @@ export function ThinkingView() {
         <View style={{ transform: [{ scale: s }], width: 124, height: 124, borderRadius: 38, backgroundColor: C.indigo, alignItems: 'center', justifyContent: 'center', shadowColor: C.glow, shadowOpacity: 0.5, shadowRadius: 40, shadowOffset: { width: 0, height: 12 }, elevation: 10 }}>
           <Mark size={78} />
         </View>
-        <T w="bold" size={TS.h2} align="center" style={{ marginTop: 28 }}>غيث عم يرتّب{dots}</T>
-        <T size={TS.small} color={C.sub} align="center">بقسّم كلامك مهام وبحط لكل وحدة وقتها</T>
+        <T w="bold" size={TS.h2} align="center" style={{ marginTop: 28 }}>{tx('غيث يرتّب', 'Ghaith is organising')}{dots}</T>
+        <T size={TS.small} color={C.sub} align="center">{tx('يحوّل كلامك إلى مهام وتعديلات واضحة', 'Turning what you said into clear tasks and changes')}</T>
       </View>
     </Modal>
   );
 }
 
 // ---------------------------------------------------------------- review
-type Item = { key: number; draft: Draft; keep: boolean };
+type Item = { key: number; p: Proposal; keep: boolean };
 
-function DraftRow({ item, last, onToggle, onRemove, onOpen }: { item: Item; last: boolean; onToggle: () => void; onRemove: () => void; onOpen: () => void }) {
-  const d = item.draft;
-  const remind = d.remind_at ?? d.due_at;
-  const sub = [
-    KINDS[d.kind].label,
-    remind ? (d.kind === 'waiting' && !d.due_at ? 'بتابع ' : '') + shortWhen(remind) : null,
-    CATS[d.category].label,
-    d.person,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  const warn = d.similar_to ? `عندك مهمة مشابهة: ${d.similar_to}` : !remind ? 'بدون وقت، اضغط لتحدد متى أذكّرك' : '';
+const OPS: Record<Proposal['op'], { icon: IconName; color: string; label: () => string }> = {
+  add: { icon: 'plus', color: C.indigo, label: () => tx('جديدة', 'New') },
+  update: { icon: 'pencil-outline', color: C.glow, label: () => tx('تعديل', 'Edit') },
+  complete: { icon: 'check', color: C.tealDeep, label: () => tx('إنجاز', 'Done') },
+  delete: { icon: 'trash-can-outline', color: C.late, label: () => tx('حذف', 'Delete') },
+};
+
+/** The task as it will be after this proposal */
+function result(p: Proposal): Fields {
+  if (p.op === 'add') return p.task;
+  if (p.op === 'update') return { ...p.current, ...p.changes };
+  return p.current;
+}
+
+function describe(p: Proposal): { sub: string; warn: string } {
+  const f = result(p);
+  const remind = f.remind_at ?? f.due_at;
+  const unsure = 'unsure' in p && p.unsure ? tx('تأكّد أنها المهمة المقصودة', 'Check this is the right task') : '';
+  if (p.op === 'update') {
+    const at = p.changes.due_at ?? p.changes.remind_at;
+    const auto = [at ? shortWhen(at) : null, p.changes.kind ? KINDS[p.changes.kind].label : null, p.changes.person].filter(Boolean).join(' · ');
+    return { sub: p.change || auto || tx('تحديث التفاصيل', 'Details updated'), warn: unsure };
+  }
+  if (p.op === 'complete') return { sub: tx('ستُعلَّم كمنجزة', 'Will be marked as done'), warn: unsure };
+  if (p.op === 'delete') return { sub: tx('ستُحذف نهائياً', 'Will be deleted'), warn: unsure };
+  const sub = [KINDS[f.kind].label, remind ? (f.kind === 'waiting' && !f.due_at ? tx('متابعة ', 'follow up ') : '') + shortWhen(remind) : null, CATS[f.category].label, f.person].filter(Boolean).join(' · ');
+  return { sub, warn: remind ? '' : tx('دون موعد، اضغط لتحديد وقت التذكير', 'No time yet, tap to set a reminder') };
+}
+
+function ProposalRow({ item, last, onToggle, onRemove, onOpen }: { item: Item; last: boolean; onToggle: () => void; onRemove: () => void; onOpen?: () => void }) {
+  const { p } = item;
+  const f = result(p);
+  const op = OPS[p.op];
+  const { sub, warn } = describe(p);
   return (
     <Pressable
-      onPress={onOpen}
-      style={({ pressed }) => ({ flexDirection: 'row-reverse', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, backgroundColor: pressed ? C.bg : 'transparent', opacity: item.keep ? 1 : 0.5 })}
+      onPress={onOpen ?? onToggle}
+      style={({ pressed }) => ({ flexDirection: D.row, alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, backgroundColor: pressed ? C.bg : 'transparent', opacity: item.keep ? 1 : 0.5 })}
     >
-      <Check on={item.keep} onPress={onToggle} size={24} label={item.keep ? 'لا تحفظها' : 'احفظها'} />
-      <View style={{ flex: 1, marginRight: 12, marginLeft: 8 }}>
-        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
-          <T w="medium" numberOfLines={2} style={{ flexShrink: 1 }}>{d.title}</T>
-          {d.priority === 'high' && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: C.late }} />}
-          {!!d.repeat && <Icon name="repeat" size={14} color={C.faint} />}
+      <Check on={item.keep} onPress={onToggle} size={24} label={item.keep ? tx('استبعادها', 'Skip it') : tx('اعتمادها', 'Keep it')} />
+      <View style={{ flex: 1, [D.rtl ? 'marginRight' : 'marginLeft']: 12, [D.rtl ? 'marginLeft' : 'marginRight']: 8 }}>
+        <View style={{ flexDirection: D.row, alignItems: 'center', gap: 6 }}>
+          {p.op !== 'add' && (
+            <View style={{ flexDirection: D.row, alignItems: 'center', gap: 3, backgroundColor: tint(op.color, 0.1), borderRadius: R.pill, paddingHorizontal: 7, paddingVertical: 1 }}>
+              <Icon name={op.icon} size={12} color={op.color} />
+              <T w="medium" size={TS.tiny} color={op.color}>{op.label()}</T>
+            </View>
+          )}
+          <T w="medium" numberOfLines={2} color={p.op === 'delete' ? C.sub : C.text} style={[{ flexShrink: 1 }, p.op === 'delete' ? { textDecorationLine: 'line-through' } : null]}>{f.title}</T>
+          {p.op === 'add' && f.priority === 'high' && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: C.late }} />}
         </View>
-        <T size={TS.small} color={C.sub} numberOfLines={1}>{sub}</T>
+        <T size={TS.small} color={p.op === 'update' ? C.glow : C.sub} numberOfLines={2}>{sub}</T>
         {!!warn && <T size={TS.tiny} color={C.amberText} numberOfLines={1}>{warn}</T>}
       </View>
-      <Pressable onPress={onRemove} hitSlop={12} accessibilityLabel="شيلها">
+      <Pressable onPress={onRemove} hitSlop={12} accessibilityLabel={tx('إزالة', 'Remove')}>
         <Icon name="close" size={18} color={C.faint} />
       </Pressable>
-      {!last && <View style={{ position: 'absolute', bottom: 0, left: 16, right: 52, height: 1, backgroundColor: C.line }} />}
+      {!last && <View style={{ position: 'absolute', bottom: 0, [D.end]: 16, [D.start]: 52, height: 1, backgroundColor: C.line }} />}
     </Pressable>
   );
 }
 
-export function ReviewView({ said, source, drafts, onSave, onClose, onRetry }: { said: string; source: Source; drafts: Draft[]; onSave: (d: Draft[]) => Promise<string | null>; onClose: () => void; onRetry: () => void }) {
+export function ReviewView({ said, source, proposals, onSave, onClose, onRetry }: { said: string; source: Source; proposals: Proposal[]; onSave: (p: Proposal[]) => Promise<string | null>; onClose: () => void; onRetry: () => void }) {
   const insets = useSafeAreaInsets();
-  // A draft that looks like an existing task starts unticked
-  const [items, setItems] = useState<Item[]>(() => drafts.map((d, i) => ({ key: i, draft: d, keep: !d.similar_to })));
+  const [items, setItems] = useState<Item[]>(() => proposals.map((p, i) => ({ key: i, p, keep: true })));
   const [edit, setEdit] = useState<{ key: number | null } | null>(null);
   const [showSaid, setShowSaid] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -216,77 +266,98 @@ export function ReviewView({ said, source, drafts, onSave, onClose, onRetry }: {
   useBack(onClose);
 
   const kept = items.filter((i) => i.keep);
+  const onlyAdds = kept.every((i) => i.p.op === 'add');
   const save = async () => {
     setBusy(true);
-    const e = await onSave(kept.map((i) => i.draft));
+    const e = await onSave(kept.map((i) => i.p));
     setBusy(false);
     if (e) setErr(e);
   };
-  const editing = edit && edit.key !== null ? items.find((i) => i.key === edit.key)?.draft ?? null : null;
+  const editing = edit && edit.key !== null ? items.find((i) => i.key === edit.key) ?? null : null;
+  /** Puts an edited task back into its proposal: a new task stays new, an edit keeps only what differs */
+  const onDraft = (d: Draft) => {
+    const { similar_to: _s, ...f } = d;
+    if (!edit || edit.key === null) return setItems((l) => [...l, { key: Date.now(), p: { op: 'add', task: f }, keep: true }]);
+    setItems((l) =>
+      l.map((x) => {
+        if (x.key !== edit.key) return x;
+        if (x.p.op === 'add') return { ...x, keep: true, p: { op: 'add', task: f } };
+        if (x.p.op === 'update') {
+          const cur = x.p.current;
+          const changes = Object.fromEntries(Object.entries(f).filter(([k, v]) => cur[k as keyof Fields] !== v)) as Partial<Fields>;
+          return { ...x, keep: true, p: { ...x.p, changes, change: null } };
+        }
+        return x;
+      }),
+    );
+  };
+  const n = items.length;
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <View style={{ flex: 1, backgroundColor: C.bg }}>
-        <ScrollView contentContainerStyle={{ paddingTop: insets.top + 12, paddingHorizontal: 20, paddingBottom: 130 }}>
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' }}>
-            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: tint(C.glow, 0.1), paddingHorizontal: 10, paddingVertical: 3, borderRadius: R.pill }}>
+        <ScrollView contentContainerStyle={{ paddingTop: insets.top + 12, paddingHorizontal: 16, paddingBottom: 130 }}>
+          <View style={{ flexDirection: D.row, alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: D.row, alignItems: 'center', gap: 6, backgroundColor: tint(C.glow, 0.1), paddingHorizontal: 10, paddingVertical: 3, borderRadius: R.pill }}>
               <Icon name="creation" size={14} color={C.glow} />
-              <T w="medium" size={TS.tiny} color={C.glow}>{items.length ? 'جاهزة للمراجعة' : 'ما لقيت مهام'}</T>
+              <T w="medium" size={TS.tiny} color={C.glow}>{n ? tx('جاهزة للمراجعة', 'Ready to review') : tx('لا توجد مهام', 'Nothing found')}</T>
             </View>
-            <IconButton icon="close" label="إغلاق" onPress={onClose} />
+            <IconButton icon="close" label={tx('إغلاق', 'Close')} onPress={onClose} />
           </View>
           <T w="bold" size={TS.h1} style={{ marginTop: 10, lineHeight: 36 }}>
-            {items.length ? `طلّعت ${countTasks(items.length)} من ${source === 'email' ? 'الإيميل' : 'كلامك'}` : 'ما لقيت شي أسجّله'}
+            {!n
+              ? tx('لم أجد ما يمكن تسجيله', 'Nothing to record')
+              : items.every((i) => i.p.op === 'add')
+                ? tx(`استخرجت ${countTasks(n)}`, `Found ${countTasks(n)}`)
+                : tx(`جهّزت ${countChanges(n)}`, `Prepared ${countChanges(n)}`)}
           </T>
           <T size={TS.small} color={C.sub}>
-            {items.length ? 'اضغط على أي مهمة لتعدّلها، أو شيلها من القائمة' : 'جرّب تحكيها بطريقة ثانية، أو أضف المهمة بإيدك.'}
+            {n ? tx('راجعها قبل الاعتماد: اضغط على أي بند لتعديله، أو أزله من القائمة.', 'Review before applying: tap any item to edit it, or remove it.') : tx('جرّب صياغة أخرى، أو أضف المهمة يدوياً.', 'Try saying it another way, or add the task by hand.')}
           </T>
 
-          <Pressable onPress={() => setShowSaid((v) => !v)} style={{ marginTop: 16, marginBottom: 16, borderRadius: 14, backgroundColor: C.surfaceAlt, paddingHorizontal: 12, paddingVertical: 9, flexDirection: 'row-reverse', alignItems: showSaid ? 'flex-start' : 'center', gap: 8 }}>
+          <Pressable onPress={() => setShowSaid((v) => !v)} style={{ marginTop: 16, marginBottom: 16, borderRadius: 14, backgroundColor: C.surfaceAlt, paddingHorizontal: 12, paddingVertical: 9, flexDirection: D.row, alignItems: showSaid ? 'flex-start' : 'center', gap: 8 }}>
             <Icon name={source === 'voice' ? 'microphone-outline' : source === 'email' ? 'email-outline' : 'text'} size={17} color={C.indigo} />
             <T size={TS.small} color={C.sub} style={{ flex: 1 }} numberOfLines={showSaid ? undefined : 1}>«{said}»</T>
-            <T size={TS.small} w="medium" color={C.glow}>{showSaid ? 'إخفاء' : source === 'voice' ? 'اللي قلته' : 'النص'}</T>
+            <T size={TS.small} w="medium" color={C.glow}>{showSaid ? tx('إخفاء', 'Hide') : tx('النص الأصلي', 'Original')}</T>
           </Pressable>
 
-          {!!items.length && (
+          {!!n && (
             <Card>
               {items.map((it, i) => (
-                <DraftRow
+                <ProposalRow
                   key={it.key}
                   item={it}
-                  last={i === items.length - 1}
+                  last={i === n - 1}
                   onToggle={() => setItems((l) => l.map((x) => (x.key === it.key ? { ...x, keep: !x.keep } : x)))}
                   onRemove={() => setItems((l) => l.filter((x) => x.key !== it.key))}
-                  onOpen={() => setEdit({ key: it.key })}
+                  onOpen={it.p.op === 'add' || it.p.op === 'update' ? () => setEdit({ key: it.key }) : undefined}
                 />
               ))}
             </Card>
           )}
-          {!items.length && (
+          {!n && (
             <View style={{ flexDirection: 'row', marginTop: 12 }}>
-              <GhostButton label="جرّب كمان مرة" icon="microphone-outline" onPress={onRetry} />
+              <GhostButton label={tx('حاول مرة أخرى', 'Try again')} icon="microphone-outline" onPress={onRetry} />
             </View>
           )}
           <ErrorText text={err} />
         </ScrollView>
 
-        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingTop: 12, paddingBottom: insets.bottom + 20, backgroundColor: 'rgba(248,250,255,0.96)', flexDirection: 'row-reverse', gap: 10 }}>
-          <PrimaryButton style={{ flex: 1 }} label={kept.length ? `احفظ ${countTasks(kept.length)}` : 'اختار مهمة لتحفظها'} icon="check" onPress={save} busy={busy} disabled={!kept.length} />
-          <Pressable onPress={() => setEdit({ key: null })} accessibilityLabel="أضف مهمة" style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: C.surface, borderWidth: 1.5, borderColor: C.lineHi, alignItems: 'center', justifyContent: 'center', ...liftMd, shadowOpacity: 0.06 }}>
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 12, paddingBottom: insets.bottom + 20, backgroundColor: 'rgba(248,250,255,0.96)', flexDirection: D.row, gap: 10 }}>
+          <PrimaryButton
+            style={{ flex: 1 }}
+            label={!kept.length ? tx('اختر بنداً لاعتماده', 'Pick something to apply') : onlyAdds ? tx(`حفظ ${countTasks(kept.length)}`, `Save ${countTasks(kept.length)}`) : tx(`اعتماد ${countChanges(kept.length)}`, `Apply ${countChanges(kept.length)}`)}
+            icon="check"
+            onPress={save}
+            busy={busy}
+            disabled={!kept.length}
+          />
+          <Pressable onPress={() => setEdit({ key: null })} accessibilityLabel={tx('إضافة مهمة', 'Add a task')} style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: C.surface, borderWidth: 1.5, borderColor: C.lineHi, alignItems: 'center', justifyContent: 'center', ...liftMd, shadowOpacity: 0.06 }}>
             <Icon name="plus" size={24} color={C.indigo} />
           </Pressable>
         </View>
 
-        {edit && (
-          <TaskSheet
-            task={null}
-            draft={editing}
-            onDraft={(d) =>
-              setItems((l) => (edit.key === null ? [...l, { key: Date.now(), draft: d, keep: true }] : l.map((x) => (x.key === edit.key ? { ...x, draft: d, keep: true } : x))))
-            }
-            onClose={() => setEdit(null)}
-          />
-        )}
+        {edit && <TaskSheet task={null} draft={editing ? result(editing.p) : null} onDraft={onDraft} onClose={() => setEdit(null)} />}
       </View>
     </Modal>
   );
