@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Aurora } from '../components/Aurora';
 import { Orb } from '../components/Orb';
 import { Wordmark } from '../components/Wordmark';
 import { useStore } from '../lib/store';
@@ -26,6 +27,7 @@ export default function Login() {
 
   return (
     <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: C.bg }}>
+      <Aurora />
       <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24, paddingHorizontal: 24 }} keyboardShouldPersistTaps="handled">
         <View style={{ alignItems: 'center' }}>
           <Orb state="idle" level={0} size={170} />

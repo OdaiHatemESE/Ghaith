@@ -38,7 +38,7 @@ export function TaskRow({ task, onToggle, onOpen, last, compact }: { task: Task;
         accessibilityLabel={done ? 'رجّعها مفتوحة' : 'خلصت'}
         style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: ring, backgroundColor: done ? C.ok : 'transparent', alignItems: 'center', justifyContent: 'center' }}
       >
-        {done && <Icon name="check" size={15} color={C.bg} />}
+        {done && <Icon name="check" size={15} color="#fff" />}
       </Pressable>
 
       <View style={{ flex: 1, marginRight: 14 }}>

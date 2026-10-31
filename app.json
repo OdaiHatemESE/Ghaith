@@ -5,14 +5,14 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ghaith.app"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#070B14",
+        "backgroundColor": "#F6F5FB",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "monochromeImage": "./assets/android-icon-monochrome.png",
         "backgroundImage": "./assets/android-icon-background.png"
@@ -34,7 +34,7 @@
         {
           "image": "./assets/splash-icon.png",
           "imageWidth": 160,
-          "backgroundColor": "#070B14",
+          "backgroundColor": "#F6F5FB",
           "resizeMode": "contain"
         }
       ],
@@ -42,7 +42,7 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#5B7CFF"
+          "color": "#6C5CE7"
         }
       ],
       [

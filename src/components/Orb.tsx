@@ -29,14 +29,15 @@ function Core({ size }: { size: number }) {
     <Svg width={size} height={size} viewBox="0 0 100 100">
       <Defs>
         <RadialGradient id={`c${id}`} cx="38%" cy="32%" r="75%">
-          <Stop offset="0" stopColor="#E9EEFF" />
-          <Stop offset="0.28" stopColor="#8FA6FF" />
-          <Stop offset="0.62" stopColor="#5B5BEA" />
-          <Stop offset="1" stopColor="#24166B" />
+          <Stop offset="0" stopColor="#FFFFFF" />
+          <Stop offset="0.2" stopColor="#FFD9CC" />
+          <Stop offset="0.55" stopColor="#C4A8FF" />
+          <Stop offset="0.82" stopColor="#7A6CFF" />
+          <Stop offset="1" stopColor="#5646E0" />
         </RadialGradient>
         <RadialGradient id={`s${id}`} cx="70%" cy="78%" r="45%">
-          <Stop offset="0" stopColor="#4FD3FF" stopOpacity={0.75} />
-          <Stop offset="1" stopColor="#4FD3FF" stopOpacity={0} />
+          <Stop offset="0" stopColor="#8FD6FF" stopOpacity={0.7} />
+          <Stop offset="1" stopColor="#8FD6FF" stopOpacity={0} />
         </RadialGradient>
       </Defs>
       <Circle cx={50} cy={50} r={50} fill={`url(#c${id})`} />
@@ -54,9 +55,9 @@ function Ring({ size }: { size: number }) {
     <Svg width={size} height={size} viewBox="0 0 100 100">
       <Defs>
         <LinearGradient id={`r${id}`} x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor="#4FD3FF" stopOpacity={1} />
-          <Stop offset="0.5" stopColor="#9A6BFF" stopOpacity={0.9} />
-          <Stop offset="1" stopColor="#5B7CFF" stopOpacity={0} />
+          <Stop offset="0" stopColor="#FF9F8A" stopOpacity={1} />
+          <Stop offset="0.5" stopColor="#8B7BFF" stopOpacity={0.95} />
+          <Stop offset="1" stopColor="#6C5CE7" stopOpacity={0} />
         </LinearGradient>
       </Defs>
       <Circle cx={50} cy={50} r={r} stroke={`url(#r${id})`} strokeWidth={1.6} strokeLinecap="round" fill="none" strokeDasharray={`${c * 0.32} ${c}`} />
@@ -97,7 +98,7 @@ export function Orb({ state, level, size = 230 }: { state: OrbState; level: numb
   const pulse = state === 'thinking' ? 0.07 : state === 'idle' ? 0.035 : 0.02;
   const coreScale = Animated.add(Animated.add(0.94, Animated.multiply(wave, pulse)), Animated.multiply(amp, 0.16));
   const blobScale = Animated.add(Animated.add(1, Animated.multiply(wave, pulse * 1.6)), Animated.multiply(amp, 0.42));
-  const haloOpacity = Animated.add(state === 'idle' ? 0.45 : 0.75, Animated.multiply(amp, 0.25));
+  const haloOpacity = Animated.add(state === 'idle' ? 0.55 : 0.8, Animated.multiply(amp, 0.2));
 
   const core = size * 0.52;
   const blob = size * 0.82;
@@ -110,19 +111,19 @@ export function Orb({ state, level, size = 230 }: { state: OrbState; level: numb
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }} pointerEvents="none">
       <Animated.View style={{ position: 'absolute', opacity: haloOpacity, transform: [{ scale: blobScale }] }}>
-        <Glow size={size} color="#3B4FD8" opacity={0.55} />
+        <Glow size={size} color="#A996FF" opacity={0.5} />
       </Animated.View>
       <Animated.View style={{ position: 'absolute', transform: [{ rotate: rot(spinA) }, { translateX: off }, { scale: blobScale }] }}>
-        <Glow size={blob} color="#5B7CFF" opacity={0.85} />
+        <Glow size={blob} color="#8B7BFF" opacity={0.7} />
       </Animated.View>
       <Animated.View style={{ position: 'absolute', transform: [{ rotate: rot(spinB, -1) }, { translateY: off }, { scale: blobScale }] }}>
-        <Glow size={blob * 0.92} color="#9A6BFF" opacity={0.8} />
+        <Glow size={blob * 0.92} color="#FFB8A8" opacity={0.75} />
       </Animated.View>
       <Animated.View style={{ position: 'absolute', transform: [{ rotate: rot(spinC) }, { translateX: -off * 0.8 }, { translateY: -off * 0.5 }, { scale: blobScale }] }}>
-        <Glow size={blob * 0.75} color="#4FD3FF" opacity={0.6} />
+        <Glow size={blob * 0.75} color="#9ED8FF" opacity={0.65} />
       </Animated.View>
       {state === 'listening' && (
-        <Animated.View style={{ position: 'absolute', width: size * 0.9, height: size * 0.9, borderRadius: size, borderWidth: 1.5, borderColor: '#7FA0FF', opacity: rippleOpacity, transform: [{ scale: rippleScale }] }} />
+        <Animated.View style={{ position: 'absolute', width: size * 0.9, height: size * 0.9, borderRadius: size, borderWidth: 1.5, borderColor: '#8B7BFF', opacity: rippleOpacity, transform: [{ scale: rippleScale }] }} />
       )}
       <Animated.View style={{ position: 'absolute', transform: [{ scale: coreScale }, { rotate: rot(spinB) }] }}>
         <Core size={core} />

@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef } from 'react';
 import { ActivityIndicator, I18nManager, Platform, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Aurora } from '../components/Aurora';
 import { Wordmark } from '../components/Wordmark';
 import { clearReminders, notificationPermission, onReminderTap, ReminderTap, syncReminders } from '../lib/reminders';
 import { StoreProvider, useStore } from '../lib/store';
@@ -74,6 +75,7 @@ function Gate() {
   if (status === 'loading') {
     return (
       <View style={{ flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', gap: 18 }}>
+        <Aurora />
         <Wordmark size={48} />
         <ActivityIndicator color={C.accent} />
       </View>
@@ -111,7 +113,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <StoreProvider>
-        <StatusBar style="light" />
+        <StatusBar style="dark" />
         <View style={Platform.OS === 'web' ? { flex: 1, width: '100%', maxWidth: 520, alignSelf: 'center', backgroundColor: C.bg } : { flex: 1, backgroundColor: C.bg }}>
           <Gate />
         </View>

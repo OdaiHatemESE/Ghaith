@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Aurora } from '../components/Aurora';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Action, useStore } from '../lib/store';
 import { dayLabel, timeLabel } from '../lib/tasks';
@@ -27,6 +28,7 @@ export default function History() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
+      <Aurora />
       <ScreenHeader title="المحادثات" />
       <ScrollView ref={scroll} contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24, gap: 10 }} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}>
         {!messages.length && <T color={C.sub} align="center" style={{ marginTop: 48 }}>لسا ما حكينا.</T>}
@@ -41,7 +43,7 @@ export default function History() {
                   maxWidth: '86%',
                   backgroundColor: mine ? C.accent : C.surface,
                   borderWidth: mine ? 0 : 1,
-                  borderColor: C.line,
+                  borderColor: C.glassBorder,
                   borderRadius: 20,
                   borderTopLeftRadius: mine ? 6 : 20,
                   borderTopRightRadius: mine ? 20 : 6,
@@ -49,7 +51,7 @@ export default function History() {
                   paddingVertical: 10,
                 }}
               >
-                <T color="#fff">{m.content}</T>
+                <T color={mine ? '#fff' : C.text}>{m.content}</T>
                 {m.actions?.length > 0 && (
                   <View style={{ marginTop: 8, gap: 4 }}>
                     {m.actions.map((a, i) => {
@@ -63,7 +65,7 @@ export default function History() {
                     })}
                   </View>
                 )}
-                <T size={10} color={mine ? '#DDE4FF' : C.faint} align="left" style={{ marginTop: 2 }}>{timeLabel(new Date(m.created_at))}</T>
+                <T size={10} color={mine ? '#E4E0FF' : C.faint} align="left" style={{ marginTop: 2 }}>{timeLabel(new Date(m.created_at))}</T>
               </View>
             </View>
           );

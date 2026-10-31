@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Aurora } from '../components/Aurora';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TaskRow } from '../components/TaskRow';
 import { TaskSheet } from '../components/TaskSheet';
@@ -62,6 +63,7 @@ export default function Tasks() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
+      <Aurora />
       <ScreenHeader title="المهام" right={<IconButton icon="plus" label="أضف مهمة" onPress={() => setSheet({ task: null })} />} />
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 40 }}

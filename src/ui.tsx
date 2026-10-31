@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleProp, Text, TextInput, TextInputProps, TextProps, TextStyle, View, ViewStyle } from 'react-native';
-import { C, F, TS } from './theme';
+import { C, F, lift, TS } from './theme';
 
 type Weight = 'regular' | 'medium' | 'semibold' | 'bold';
 
@@ -36,9 +36,9 @@ export function IconButton({ icon, onPress, label, size = 42 }: { icon: IconName
       accessibilityLabel={label}
       accessibilityRole="button"
       hitSlop={6}
-      style={({ pressed }) => ({ width: size, height: size, borderRadius: size / 2, backgroundColor: pressed ? C.surfaceHi : C.surface, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center' })}
+      style={({ pressed }) => ({ width: size, height: size, borderRadius: size / 2, backgroundColor: pressed ? C.surfaceHi : C.surface, borderWidth: 1, borderColor: C.glassBorder, alignItems: 'center', justifyContent: 'center' })}
     >
-      <Icon name={icon} size={size * 0.48} color={C.sub} />
+      <Icon name={icon} size={size * 0.48} color={C.text} />
     </Pressable>
   );
 }
@@ -72,9 +72,9 @@ export function Chip({ label, on, onPress, icon, color = C.accent }: { label: st
         paddingHorizontal: 13,
         paddingVertical: 8,
         borderRadius: 12,
-        backgroundColor: on ? color + '2A' : C.surface,
+        backgroundColor: on ? color + '1F' : C.surface,
         borderWidth: 1,
-        borderColor: on ? color : C.line,
+        borderColor: on ? color : C.glassBorder,
       }}
     >
       {icon && <Icon name={icon} size={15} color={on ? color : C.sub} />}
@@ -86,7 +86,7 @@ export function Chip({ label, on, onPress, icon, color = C.accent }: { label: st
 /** Two or three options in one rounded track */
 export function Segmented<K extends string>({ value, options, onChange }: { value: K; options: [K, string][]; onChange: (k: K) => void }) {
   return (
-    <View style={{ flexDirection: 'row-reverse', backgroundColor: C.surface, borderRadius: 14, padding: 4, borderWidth: 1, borderColor: C.line }}>
+    <View style={{ flexDirection: 'row-reverse', backgroundColor: C.surface, borderRadius: 14, padding: 4, borderWidth: 1, borderColor: C.glassBorder }}>
       {options.map(([k, label]) => {
         const on = k === value;
         return (
@@ -95,7 +95,7 @@ export function Segmented<K extends string>({ value, options, onChange }: { valu
             onPress={() => onChange(k)}
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}
-            style={{ flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: on ? C.surfaceHi : 'transparent', alignItems: 'center' }}
+            style={{ flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: on ? C.surfaceHi : 'transparent', alignItems: 'center', ...(on ? lift : {}) }}
           >
             <T size={TS.small} w={on ? 'semibold' : 'regular'} color={on ? C.text : C.sub} align="center">{label}</T>
           </Pressable>
@@ -145,7 +145,7 @@ export function GhostButton({ label, onPress, icon, color = C.text }: { label: s
         paddingVertical: 12,
         backgroundColor: pressed ? C.surfaceHi : C.surface,
         borderWidth: 1,
-        borderColor: C.line,
+        borderColor: C.lineHi,
         flexDirection: 'row-reverse',
         alignItems: 'center',
         justifyContent: 'center',
@@ -190,7 +190,7 @@ export function Field({
   return (
     <View style={{ marginTop: label ? 14 : 0 }}>
       {!!label && <T w="medium" size={TS.small} color={C.sub} style={{ marginBottom: 6 }}>{label}</T>}
-      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: C.surface, borderRadius: 14, borderWidth: 1, borderColor: C.line }}>
+      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: C.surfaceHi, borderRadius: 14, borderWidth: 1, borderColor: C.line }}>
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -232,7 +232,7 @@ export function Field({
 }
 
 export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
-  return <View style={[{ backgroundColor: C.surface, borderRadius: 20, borderWidth: 1, borderColor: C.line, overflow: 'hidden' }, style]}>{children}</View>;
+  return <View style={[{ backgroundColor: C.surface, borderRadius: 22, borderWidth: 1, borderColor: C.glassBorder, ...lift }, style]}>{children}</View>;
 }
 
 export function ErrorText({ text }: { text: string }) {

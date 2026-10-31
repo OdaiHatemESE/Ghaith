@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Aurora } from '../components/Aurora';
 import { Orb } from '../components/Orb';
 import { TaskRow } from '../components/TaskRow';
 import { Wordmark } from '../components/Wordmark';
@@ -9,7 +10,7 @@ import { useConversation } from '../lib/conversation';
 import { Action, useStore } from '../lib/store';
 import { greeting, groupOf, longDate, sortTasks } from '../lib/tasks';
 import { useNow } from '../lib/useNow';
-import { C, F, TS } from '../theme';
+import { C, F, lift, TS } from '../theme';
 import { Icon, IconButton, IconName, T } from '../ui';
 
 const STATUS = {
@@ -54,6 +55,7 @@ export default function Home() {
 
   return (
     <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: C.bg }}>
+      <Aurora />
       <ScrollView contentContainerStyle={{ paddingTop: insets.top + 10, paddingBottom: insets.bottom + 120 }} keyboardShouldPersistTaps="handled">
         {/* Top bar */}
         <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20 }}>
@@ -122,7 +124,7 @@ export default function Home() {
         </View>
 
         {/* Today */}
-        <View style={{ marginTop: 26, marginHorizontal: 16, backgroundColor: C.surface, borderRadius: 24, borderWidth: 1, borderColor: C.line, overflow: 'hidden' }}>
+        <View style={{ marginTop: 26, marginHorizontal: 16, backgroundColor: C.surface, borderRadius: 26, borderWidth: 1, borderColor: C.glassBorder, ...lift }}>
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 16, paddingBottom: 6 }}>
             <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
               <T w="semibold" size={TS.h2}>اليوم</T>
@@ -178,7 +180,7 @@ export default function Home() {
             multiline
             maxLength={2000}
             onSubmitEditing={submit}
-            style={{ flex: 1, maxHeight: 120, backgroundColor: C.surface, borderRadius: 20, borderWidth: 1, borderColor: C.line, paddingHorizontal: 14, paddingVertical: 11, fontFamily: F.regular, fontSize: TS.body, color: C.text, textAlign: 'right', writingDirection: 'rtl' }}
+            style={{ flex: 1, maxHeight: 120, backgroundColor: C.surfaceHi, borderRadius: 20, borderWidth: 1, borderColor: C.line, paddingHorizontal: 14, paddingVertical: 11, fontFamily: F.regular, fontSize: TS.body, color: C.text, textAlign: 'right', writingDirection: 'rtl' }}
           />
           <Pressable onPress={text.trim() ? submit : () => setTyping(false)} accessibilityLabel={text.trim() ? 'أرسل' : 'إغلاق'} style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: text.trim() ? C.accent : C.surfaceHi, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name={text.trim() ? 'arrow-up' : 'close'} size={22} color="#fff" />
@@ -194,7 +196,7 @@ function Pill({ icon, label, onPress }: { icon: IconName; label: string; onPress
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      style={({ pressed }) => ({ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: pressed ? C.surfaceHi : C.surface, borderWidth: 1, borderColor: C.line })}
+      style={({ pressed }) => ({ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: pressed ? C.surfaceHi : C.surface, borderWidth: 1, borderColor: C.glassBorder })}
     >
       <Icon name={icon} size={16} color={C.sub} />
       <T size={TS.small} color={C.sub}>{label}</T>

@@ -25,7 +25,7 @@ export function Sheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       {/* Android draws edge to edge, so the keyboard no longer resizes the window: make room on both platforms */}
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1, justifyContent: 'flex-end' }}>
-        <Pressable onPress={onClose} style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.6)' }} />
+        <Pressable onPress={onClose} style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(22,20,43,0.32)' }} />
         <View
           style={{
             backgroundColor: C.bgSoft,

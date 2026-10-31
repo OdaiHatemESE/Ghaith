@@ -1,12 +1,12 @@
-"""Renders the غيث app icons: the wordmark «غيث» in Reem Kufi Bold on the night background, with the
-soft blue-violet glow of the voice orb behind it. Run: python3 assets/brand/mark.py  (Pillow with raqm)."""
+"""Renders the غيث app icons: the wordmark «غيث» in Reem Kufi Bold, deep ink on a pale lavender tile with the
+soft aurora glows (peach, lilac, sky) of the app behind it. Run: python3 assets/brand/mark.py  (Pillow with raqm)."""
 import os
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 HERE = os.path.dirname(__file__)
 OUT = os.path.join(HERE, '..')
 FONT = os.path.join(HERE, '..', '..', 'node_modules', '@expo-google-fonts', 'reem-kufi', '700Bold', 'ReemKufi_700Bold.ttf')
-BG0, BG1 = (16, 24, 42), (7, 11, 20)
+BG0, BG1 = (251, 250, 254), (240, 238, 250)
 
 
 def background(size, rounded=True):
@@ -24,12 +24,16 @@ def background(size, rounded=True):
 
 
 def glow(size, strength=1.0):
+    """Soft colour clouds; each one is a solid colour shown through a blurred mask (no dark fringes)"""
     g = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(g)
-    for (cx, cy, r, col) in [(0.42, 0.55, 0.30, (91, 124, 255)), (0.6, 0.48, 0.26, (154, 107, 255)), (0.5, 0.62, 0.2, (79, 211, 255))]:
-        a = int(150 * strength)
-        d.ellipse([(cx - r) * size, (cy - r) * size, (cx + r) * size, (cy + r) * size], fill=col + (a,))
-    return g.filter(ImageFilter.GaussianBlur(size * 0.12))
+    for (cx, cy, r, col) in [(0.3, 0.3, 0.34, (255, 184, 168)), (0.72, 0.5, 0.32, (139, 123, 255)), (0.4, 0.78, 0.28, (158, 216, 255))]:
+        m = Image.new('L', (size, size), 0)
+        ImageDraw.Draw(m).ellipse([(cx - r) * size, (cy - r) * size, (cx + r) * size, (cy + r) * size], fill=int(170 * strength))
+        m = m.filter(ImageFilter.GaussianBlur(size * 0.12))
+        layer = Image.new('RGBA', (size, size), col + (0,))
+        layer.putalpha(m)
+        g = Image.alpha_composite(g, layer)
+    return g
 
 
 def word(size, color=(242, 245, 251, 255), scale=0.46):
@@ -52,15 +56,15 @@ def icon(size, rounded=True, bg=True, mono=None, scale=0.46, glow_strength=1.0, 
             ImageDraw.Draw(m).rounded_rectangle([0, 0, S - 1, S - 1], radius=int(S * 0.23), fill=255)
             img.putalpha(m)
     if text:
-        img = Image.alpha_composite(img, word(S, mono or (242, 245, 251, 255), scale))
+        img = Image.alpha_composite(img, word(S, mono or (22, 20, 43, 255), scale))
     return img.resize((size, size), Image.LANCZOS)
 
 
 icon(1024).save(os.path.join(OUT, 'icon.png'))
 icon(48, scale=0.5).save(os.path.join(OUT, 'favicon.png'))
-icon(1024, rounded=False, bg=False, scale=0.34).save(os.path.join(OUT, 'android-icon-foreground.png'))
+icon(1024, rounded=False, bg=False, scale=0.34, mono=(22, 20, 43, 255)).save(os.path.join(OUT, 'android-icon-foreground.png'))
 icon(1024, rounded=False, bg=False, scale=0.34, mono=(255, 255, 255, 255)).save(os.path.join(OUT, 'android-icon-monochrome.png'))
 icon(1024, rounded=False, bg=True, glow_strength=1.0, text=False).save(os.path.join(OUT, 'android-icon-background.png'))
-icon(512, rounded=False, bg=False, scale=0.5).save(os.path.join(OUT, 'splash-icon.png'))
+icon(512, rounded=False, bg=False, scale=0.5, mono=(22, 20, 43, 255)).save(os.path.join(OUT, 'splash-icon.png'))
 icon(96, rounded=False, bg=False, scale=0.62, mono=(255, 255, 255, 255)).save(os.path.join(OUT, 'notification-icon.png'))
 print('ok')
