@@ -1,5 +1,5 @@
-import { ReadexPro_400Regular, ReadexPro_500Medium, ReadexPro_600SemiBold, ReadexPro_700Bold } from '@expo-google-fonts/readex-pro';
-import { ReemKufi_700Bold } from '@expo-google-fonts/reem-kufi';
+import { Cairo_400Regular, Cairo_500Medium, Cairo_600SemiBold, Cairo_700Bold, Cairo_800ExtraBold } from '@expo-google-fonts/cairo';
+import { Manrope_700Bold, Manrope_800ExtraBold } from '@expo-google-fonts/manrope';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
 import { router, Stack } from 'expo-router';
@@ -7,9 +7,8 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef } from 'react';
 import { ActivityIndicator, I18nManager, Platform, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Aurora } from '../components/Aurora';
 import { AutoUpdate } from '../components/AutoUpdate';
-import { Wordmark } from '../components/Wordmark';
+import { Mark } from '../components/Logo';
 import { clearReminders, notificationPermission, onReminderTap, ReminderTap, syncReminders } from '../lib/reminders';
 import { StoreProvider, useStore } from '../lib/store';
 import { addDays, atTime, startOfDay } from '../lib/tasks';
@@ -76,9 +75,8 @@ function Gate() {
   if (status === 'loading') {
     return (
       <View style={{ flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', gap: 18 }}>
-        <Aurora />
-        <Wordmark size={48} />
-        <ActivityIndicator color={C.accent} />
+        <Mark size={96} />
+        <ActivityIndicator color={C.glow} />
       </View>
     );
   }
@@ -90,7 +88,6 @@ function Gate() {
         <Stack.Protected guard={signedIn}>
           <Stack.Screen name="index" />
           <Stack.Screen name="tasks" />
-          <Stack.Screen name="history" />
           <Stack.Screen name="settings" />
         </Stack.Protected>
         <Stack.Protected guard={!signedIn}>
@@ -103,11 +100,13 @@ function Gate() {
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
-    Readex400: ReadexPro_400Regular,
-    Readex500: ReadexPro_500Medium,
-    Readex600: ReadexPro_600SemiBold,
-    Readex700: ReadexPro_700Bold,
-    ReemKufi700: ReemKufi_700Bold,
+    Cairo400: Cairo_400Regular,
+    Cairo500: Cairo_500Medium,
+    Cairo600: Cairo_600SemiBold,
+    Cairo700: Cairo_700Bold,
+    Cairo800: Cairo_800ExtraBold,
+    Manrope700: Manrope_700Bold,
+    Manrope800: Manrope_800ExtraBold,
     ...MaterialCommunityIcons.font,
   });
   if (!fontsLoaded) return <View style={{ flex: 1, backgroundColor: C.bg }} />;

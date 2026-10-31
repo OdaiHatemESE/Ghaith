@@ -1,19 +1,15 @@
-// Talking to غيث: speech to text on the phone (Android/iOS speech services, or the browser's on web),
-// and غيث's replies read aloud. Nothing is recorded or stored; only the final text is sent to غيث.
-import { createAudioPlayer } from 'expo-audio';
-import { File, Paths } from 'expo-file-system';
-import * as Speech from 'expo-speech';
+// One-shot dictation: the person talks for as long as they like (several tasks in one go) and taps "done".
+// Speech to text runs on the phone's speech service (or the browser's on web). No audio is recorded or stored;
+// only the final text is sent to غيث.
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
-export type VoiceState = 'idle' | 'listening' | 'unsupported';
+export type DictationState = 'idle' | 'listening' | 'unsupported';
 
 const ERRORS: Record<string, string> = {
   'not-allowed': 'لازم تسمح لغيث يستخدم المايك من إعدادات الجهاز.',
   'service-not-allowed': 'خدمة تحويل الصوت مش مفعّلة على هالجهاز.',
-  'no-speech': 'ما سمعت شيء، جرّب كمان مرة.',
-  'speech-timeout': 'ما سمعت شيء، جرّب كمان مرة.',
   network: 'تحويل الصوت بده إنترنت، تأكد من الشبكة.',
   'audio-capture': 'ما قدرت أوصل للمايك.',
   'language-not-supported': 'العربي مش مثبّت بخدمة الصوت على الجهاز.',
@@ -27,230 +23,166 @@ function available(): boolean {
   }
 }
 
+const join = (a: string, b: string) => (a && b ? `${a} ${b}` : a || b).replace(/\s+/g, ' ').trim();
+
 /**
- * Press to talk: `start()` listens until the person stops speaking (or `stop()`), then calls `onFinal` with the text,
- * or `onSilent` when nothing was understood. `level` (0..1) follows the voice so the orb can move with it.
+ * `start()` listens until `finish()`; pauses don't end it (the speech service is restarted quietly when it stops on
+ * its own). `text` is everything heard so far; `finish()` resolves with the full text.
  */
-export function useVoice(onFinal: (text: string) => void, onSilent: () => void = () => {}) {
-  const [state, setState] = useState<VoiceState>(() => (available() ? 'idle' : 'unsupported'));
-  const [partial, setPartial] = useState('');
+export function useDictation() {
+  const [state, setState] = useState<DictationState>(() => (available() ? 'idle' : 'unsupported'));
+  const [text, setText] = useState('');
   const [error, setError] = useState('');
   const [level, setLevel] = useState(0);
-  const text = useRef('');
-  const delivered = useRef(false);
-  const done = useRef(onFinal);
-  const silent = useRef(onSilent);
-  useEffect(() => {
-    done.current = onFinal;
-    silent.current = onSilent;
-  }, [onFinal, onSilent]);
+  const committed = useRef(''); // finished segments
+  const interim = useRef(''); // the segment being spoken
+  const wanted = useRef(false); // the person hasn't tapped "done" yet
+  const restarts = useRef(0);
+  const waiter = useRef<((t: string) => void) | null>(null);
 
-  /** Hands the heard sentence over exactly once per listening session */
-  const finish = useCallback(() => {
-    if (delivered.current) return;
-    delivered.current = true;
-    const t = text.current.trim();
-    text.current = '';
-    setPartial('');
-    setLevel(0);
-    if (t) done.current(t);
-    else silent.current();
-  }, []);
-
-  useSpeechRecognitionEvent('start', () => setState('listening'));
-  useSpeechRecognitionEvent('result', (e) => {
-    const t = e.results[0]?.transcript ?? '';
-    if (t) {
-      text.current = t;
-      setPartial(t);
-      // Browsers give no loudness: words arriving are the sign of a voice
-      if (Platform.OS === 'web') setLevel(0.45 + Math.random() * 0.45);
-    }
-    if (e.isFinal && t) {
-      finish();
-      try {
-        ExpoSpeechRecognitionModule.stop();
-      } catch {
-        // already stopped
-      }
-    }
-  });
-  useSpeechRecognitionEvent('volumechange', (e) => setLevel(Math.max(0, Math.min(1, (e.value + 2) / 12))));
-  useSpeechRecognitionEvent('error', (e) => {
-    if (e.error === 'aborted') return;
-    // "no-speech" with something already heard is just the end of the sentence
-    if ((e.error === 'no-speech' || e.error === 'speech-timeout') && text.current) return;
-    setError(ERRORS[e.error] ?? 'صار خطأ بتحويل الصوت، جرّب كمان مرة.');
-  });
-  useSpeechRecognitionEvent('end', () => {
-    setState(available() ? 'idle' : 'unsupported');
-    finish();
-  });
-
-  // On web the level fades back down between words
-  useEffect(() => {
-    if (Platform.OS !== 'web' || state !== 'listening') return;
-    const i = setInterval(() => setLevel((l) => (l > 0.05 ? l * 0.7 : 0.05)), 120);
-    return () => clearInterval(i);
-  }, [state]);
+  const full = () => join(committed.current, interim.current);
 
   const begin = useCallback(() => {
     ExpoSpeechRecognitionModule.start({
       lang: 'ar-AE',
       interimResults: true,
-      continuous: false,
+      continuous: true,
       maxAlternatives: 1,
-      contextualStrings: ['غيث', 'ذكرني', 'أجّل', 'خلصت', 'إيميل', 'المدير'],
-      volumeChangeEventOptions: { enabled: true, intervalMillis: 120 },
+      contextualStrings: ['غيث', 'ذكرني', 'إيميل', 'المدير', 'اجتماع', 'تقرير'],
+      volumeChangeEventOptions: { enabled: true, intervalMillis: 100 },
       androidIntentOptions: {
-        // Allow a natural pause mid-sentence before deciding the person has finished
-        EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 2200,
-        EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 2200,
+        EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 6000,
+        EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 6000,
       },
       iosTaskHint: 'dictation',
     });
     setState('listening');
   }, []);
 
+  const deliver = useCallback(() => {
+    const w = waiter.current;
+    waiter.current = null;
+    if (!w) return;
+    const t = full();
+    w(t);
+  }, []);
+
+  useSpeechRecognitionEvent('start', () => setState('listening'));
+  useSpeechRecognitionEvent('result', (e) => {
+    const t = (e.results[0]?.transcript ?? '').trim();
+    if (!t) return;
+    if (e.isFinal) {
+      // Some services repeat the whole session in each final result, others send only the new segment
+      const c = committed.current;
+      committed.current = c && t.startsWith(c) ? t : join(c, t);
+      interim.current = '';
+    } else {
+      interim.current = committed.current && t.startsWith(committed.current) ? t.slice(committed.current.length).trim() : t;
+    }
+    setText(full());
+    if (Platform.OS === 'web') setLevel(0.45 + Math.random() * 0.5);
+  });
+  useSpeechRecognitionEvent('volumechange', (e) => setLevel(Math.max(0, Math.min(1, (e.value + 2) / 12))));
+  useSpeechRecognitionEvent('error', (e) => {
+    if (e.error === 'aborted' || e.error === 'no-speech' || e.error === 'speech-timeout') return;
+    wanted.current = false;
+    setError(ERRORS[e.error] ?? 'صار خطأ بتحويل الصوت، جرّب كمان مرة.');
+  });
+  useSpeechRecognitionEvent('end', () => {
+    // Keep what was being said as heard
+    if (interim.current) {
+      committed.current = join(committed.current, interim.current);
+      interim.current = '';
+    }
+    if (wanted.current && restarts.current < 40) {
+      restarts.current++;
+      try {
+        begin();
+        return;
+      } catch {
+        // fall through to finishing
+      }
+    }
+    setState(available() ? 'idle' : 'unsupported');
+    setLevel(0);
+    deliver();
+  });
+
+  // On web the level fades back down between words
+  useEffect(() => {
+    if (Platform.OS !== 'web' || state !== 'listening') return;
+    const i = setInterval(() => setLevel((l) => (l > 0.06 ? l * 0.75 : 0.06)), 110);
+    return () => clearInterval(i);
+  }, [state]);
+
+  /** Starts listening. On web this must run inside the tap, with nothing awaited before it. */
   const start = useCallback(async () => {
     setError('');
-    text.current = '';
-    delivered.current = false;
-    setPartial('');
-    stopSpeaking();
+    setText('');
+    committed.current = '';
+    interim.current = '';
+    restarts.current = 0;
+    wanted.current = true;
     try {
-      // Browsers: start right away, inside the tap, or they refuse the microphone
       if (Platform.OS === 'web') return begin();
       const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!perm.granted) {
+        wanted.current = false;
         setError(ERRORS['not-allowed']);
-        delivered.current = true;
-        silent.current();
         return;
       }
       begin();
     } catch {
+      wanted.current = false;
       setError('ما قدرت أشغّل المايك.');
       setState(available() ? 'idle' : 'unsupported');
-      delivered.current = true;
-      silent.current();
     }
   }, [begin]);
 
-  /** Stops listening and sends what was heard */
-  const stop = useCallback(() => {
-    try {
-      ExpoSpeechRecognitionModule.stop();
-    } catch {
-      // already stopped
-    }
-    // Some browsers never send "end" after a manual stop
-    setTimeout(finish, 1500);
-  }, [finish]);
+  /** Stops listening and resolves with everything that was said */
+  const finish = useCallback(
+    () =>
+      new Promise<string>((resolve) => {
+        wanted.current = false;
+        waiter.current = resolve;
+        try {
+          ExpoSpeechRecognitionModule.stop();
+        } catch {
+          // already stopped
+        }
+        // Some browsers never send "end" after a manual stop
+        setTimeout(deliver, 1800);
+      }),
+    [deliver],
+  );
 
-  /** Stops listening and drops what was heard */
+  /** Stops and throws away what was heard */
   const cancel = useCallback(() => {
-    text.current = '';
-    delivered.current = true;
+    wanted.current = false;
+    waiter.current = null;
+    committed.current = '';
+    interim.current = '';
+    setText('');
+    setLevel(0);
     try {
       ExpoSpeechRecognitionModule.abort();
     } catch {
       // already stopped
     }
-    setPartial('');
-    setLevel(0);
     setState(available() ? 'idle' : 'unsupported');
   }, []);
 
-  useEffect(() => () => {
-    delivered.current = true;
-    try {
-      ExpoSpeechRecognitionModule.abort();
-    } catch {
-      // already stopped
-    }
-  }, []);
-
-  return { state, partial, error, level, start, stop, cancel, clearError: () => setError('') };
-}
-
-// ---------- غيث's voice ----------
-let current: { stop: () => void } | null = null;
-let deviceVoice: string | undefined | null = null;
-
-/** The best Arabic voice the phone or browser has (UAE, then Gulf, then any Arabic) */
-async function pickDeviceVoice(): Promise<string | undefined> {
-  if (deviceVoice !== null) return deviceVoice;
-  try {
-    const voices = await Speech.getAvailableVoicesAsync();
-    const ar = voices.filter((v) => v.language?.toLowerCase().startsWith('ar'));
-    const rank = (l: string) => ['ar-ae', 'ar-sa', 'ar-kw', 'ar-qa', 'ar-jo', 'ar-eg', 'ar'].findIndex((p) => l.toLowerCase().startsWith(p));
-    ar.sort((a, b) => (rank(a.language) - rank(b.language)) || (a.quality === 'Enhanced' ? -1 : 1));
-    deviceVoice = ar[0]?.identifier;
-  } catch {
-    deviceVoice = undefined;
-  }
-  return deviceVoice ?? undefined;
-}
-
-function speakWithDevice(text: string, onDone: () => void) {
-  pickDeviceVoice().then((voice) => {
-    Speech.speak(text, { language: 'ar', voice, rate: 1, onDone, onStopped: onDone, onError: onDone });
-  });
-  current = { stop: () => Speech.stop() };
-}
-
-/**
- * Plays غيث's reply: the natural voice when the server sent audio (base64 WAV or MP3), otherwise the device voice.
- * Calls `onDone` once when it finishes or is stopped.
- */
-export function playReply(text: string, audio: string | null | undefined, type: string | null = 'audio/mpeg', onDone: () => void = () => {}) {
-  stopSpeaking();
-  let finished = false;
-  const done = () => {
-    if (finished) return;
-    finished = true;
-    current = null;
-    onDone();
-  };
-  if (!audio) return speakWithDevice(text, done);
-
-  if (Platform.OS === 'web') {
-    const AudioEl = (globalThis as unknown as { Audio: new (src: string) => HTMLAudioElement }).Audio;
-    const el = new AudioEl(`data:${type || 'audio/mpeg'};base64,${audio}`);
-    el.onended = done;
-    el.onerror = () => speakWithDevice(text, done);
-    el.play().catch(() => speakWithDevice(text, done));
-    current = { stop: () => (el.pause(), done()) };
-    return;
-  }
-  try {
-    const file = new File(Paths.cache, `ghaith-reply-${Date.now()}.${type === 'audio/wav' ? 'wav' : 'mp3'}`);
-    file.write(audio, { encoding: 'base64' });
-    const player = createAudioPlayer(file.uri);
-    const sub = player.addListener('playbackStatusUpdate', (st) => {
-      if (st.didJustFinish) {
-        sub.remove();
-        player.remove();
-        done();
+  useEffect(
+    () => () => {
+      wanted.current = false;
+      try {
+        ExpoSpeechRecognitionModule.abort();
+      } catch {
+        // already stopped
       }
-    });
-    player.play();
-    current = {
-      stop: () => {
-        sub.remove();
-        player.remove();
-        done();
-      },
-    };
-  } catch {
-    speakWithDevice(text, done);
-  }
-}
+    },
+    [],
+  );
 
-export function stopSpeaking() {
-  const c = current;
-  current = null;
-  c?.stop();
-  Speech.stop();
+  return { state, text, error, level, start, finish, cancel };
 }

@@ -1,32 +1,35 @@
 import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
-import { useStore } from '../lib/store';
+import { Draft, useStore } from '../lib/store';
 import { addDays, atTime, CAT_ORDER, Category, CATS, Kind, KIND_ORDER, KINDS, Priority, Repeat, REPEATS, startOfDay, Task } from '../lib/tasks';
 import { C, TS } from '../theme';
 import { Chip, ErrorText, Field, GhostButton, HScroll, Icon, Label, PrimaryButton, T } from '../ui';
 import { Sheet } from './Sheet';
 import { WhenPicker } from './WhenPicker';
 
-/** A task by hand: the essentials first (what, which kind, when to remind), the rest under "more details" */
-export function TaskSheet({ task, onClose }: { task: Task | null; onClose: () => void }) {
+/**
+ * A task by hand: the essentials first (what, which kind, when to remind), the rest under "more details".
+ * With `onDraft` it edits a draft from a capture instead of the database.
+ */
+export function TaskSheet({ task, draft, onDraft, onClose }: { task: Task | null; draft?: Draft | null; onDraft?: (d: Draft) => void; onClose: () => void }) {
   const { save, complete, reopen, remove } = useStore();
-  const [title, setTitle] = useState(task?.title ?? '');
-  const [kind, setKind] = useState<Kind>(task?.kind ?? 'todo');
-  const [category, setCategory] = useState<Category>(task?.category ?? 'work');
-  const [priority, setPriority] = useState<Priority>(task?.priority ?? 'normal');
-  const [person, setPerson] = useState(task?.person ?? '');
-  const [due, setDue] = useState<Date | null>(() => (task?.due_at ? new Date(task.due_at) : null));
-  const [remind, setRemind] = useState<Date | null>(() => (task ? (task.remind_at ? new Date(task.remind_at) : null) : atTime(addDays(startOfDay(new Date()), 1), 9)));
-  const [repeat, setRepeat] = useState<Repeat | null>(task?.repeat ?? null);
-  const [notes, setNotes] = useState(task?.notes ?? '');
-  const [more, setMore] = useState(() => !!(task && (task.due_at || task.person || task.notes || task.repeat || task.priority !== 'normal')));
+  const src = task ?? draft ?? null;
+  const [title, setTitle] = useState(src?.title ?? '');
+  const [kind, setKind] = useState<Kind>(src?.kind ?? 'todo');
+  const [category, setCategory] = useState<Category>(src?.category ?? 'work');
+  const [priority, setPriority] = useState<Priority>(src?.priority ?? 'normal');
+  const [person, setPerson] = useState(src?.person ?? '');
+  const [due, setDue] = useState<Date | null>(() => (src?.due_at ? new Date(src.due_at) : null));
+  const [remind, setRemind] = useState<Date | null>(() => (src ? (src.remind_at ? new Date(src.remind_at) : null) : atTime(addDays(startOfDay(new Date()), 1), 9)));
+  const [repeat, setRepeat] = useState<Repeat | null>(src?.repeat ?? null);
+  const [notes, setNotes] = useState(src?.notes ?? '');
+  const [more, setMore] = useState(() => !!(src && (src.due_at || src.person || src.notes || src.repeat || src.priority !== 'normal')));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
   const submit = async () => {
     if (!title.trim()) return setErr('اكتب شو المهمة');
-    setBusy(true);
-    const e = await save(task?.id ?? null, {
+    const fields = {
       title: title.trim(),
       kind,
       category,
@@ -36,7 +39,13 @@ export function TaskSheet({ task, onClose }: { task: Task | null; onClose: () =>
       remind_at: remind?.toISOString() ?? null,
       repeat,
       notes: notes.trim() || null,
-    });
+    };
+    if (onDraft) {
+      onDraft({ ...fields, similar_to: draft?.similar_to ?? null });
+      return onClose();
+    }
+    setBusy(true);
+    const e = await save(task?.id ?? null, fields);
     setBusy(false);
     if (e) setErr(e);
     else onClose();
@@ -62,14 +71,14 @@ export function TaskSheet({ task, onClose }: { task: Task | null; onClose: () =>
   const done = task?.status === 'done';
 
   return (
-    <Sheet visible title={task ? 'المهمة' : 'مهمة جديدة'} onClose={onClose} footer={<PrimaryButton label={task ? 'حفظ' : 'أضف'} onPress={submit} busy={busy} />}>
+    <Sheet visible title={onDraft ? (draft ? 'عدّل المهمة' : 'مهمة كمان') : task ? 'المهمة' : 'مهمة جديدة'} onClose={onClose} footer={<PrimaryButton label={onDraft ? 'تمام' : task ? 'حفظ' : 'أضف'} onPress={submit} busy={busy} />}>
       {task && (
         <View style={{ flexDirection: 'row-reverse', gap: 8, marginTop: 6, marginBottom: 4 }}>
           {done ? (
             <GhostButton label="رجّعها مفتوحة" icon="restore" onPress={act(() => reopen(task.id))} />
           ) : (
             <>
-              <GhostButton label="خلصت" icon="check" color={C.ok} onPress={act(() => complete(task.id))} />
+              <GhostButton label="خلصت" icon="check" color={C.tealDeep} onPress={act(() => complete(task.id))} />
               <GhostButton label="لبكرة" icon="weather-sunset-up" onPress={postpone} />
             </>
           )}
@@ -77,7 +86,7 @@ export function TaskSheet({ task, onClose }: { task: Task | null; onClose: () =>
         </View>
       )}
 
-      <Field label="شو المهمة؟" value={title} onChangeText={setTitle} placeholder="مثلاً: الرد على إيميل المدير" autoFocus={!task} maxLength={300} />
+      <Field label="شو المهمة؟" value={title} onChangeText={setTitle} placeholder="مثلاً: الرد على إيميل المدير" autoFocus={!src} maxLength={300} />
 
       <Label>النوع</Label>
       <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
@@ -98,8 +107,8 @@ export function TaskSheet({ task, onClose }: { task: Task | null; onClose: () =>
 
       {!more && (
         <Pressable onPress={() => setMore(true)} style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4, marginTop: 18 }}>
-          <Icon name="chevron-down" size={18} color={C.accent} />
-          <T size={TS.small} w="medium" color={C.accent}>تفاصيل أكثر: الموعد النهائي، الشخص، التكرار</T>
+          <Icon name="chevron-down" size={18} color={C.glow} />
+          <T size={TS.small} w="medium" color={C.glow}>تفاصيل أكثر: الموعد النهائي، الشخص، التكرار</T>
         </Pressable>
       )}
 

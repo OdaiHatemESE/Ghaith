@@ -51,9 +51,9 @@ export function AutoUpdate() {
     <View pointerEvents="box-none" style={{ position: 'absolute', top: insets.top + 8, left: 16, right: 16, alignItems: 'center' }}>
       <Pressable
         onPress={() => Updates.reloadAsync().catch(() => {})}
-        style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10, backgroundColor: C.surfaceHi, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: C.line, ...lift }}
+        style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10, backgroundColor: C.surface, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: C.line, ...lift }}
       >
-        <Icon name="auto-fix" size={18} color={C.accent} />
+        <Icon name="auto-fix" size={18} color={C.glow} />
         <T size={TS.small} w="medium">في نسخة جديدة من غيث، بتتحدّث خلال {Math.max(count, 0)}…</T>
       </Pressable>
     </View>

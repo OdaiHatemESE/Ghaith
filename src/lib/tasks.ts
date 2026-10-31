@@ -26,20 +26,20 @@ export type Task = {
 export const TASK_FIELDS = 'id,title,notes,kind,category,priority,person,due_at,remind_at,repeat,status,done_at,source,created_at,updated_at';
 
 export const KINDS: Record<Kind, { label: string; short: string; icon: IconName; color: string }> = {
-  todo: { label: 'عليّ', short: 'عليّ', icon: 'checkbox-blank-circle-outline', color: '#5B7CFF' },
-  waiting: { label: 'ناطر رد', short: 'ناطر', icon: 'timer-sand', color: '#FFB547' },
-  reply: { label: 'لازم أرد', short: 'ما رديت', icon: 'reply', color: '#B98CFF' },
+  todo: { label: 'عليّ', short: 'عليّ', icon: 'check', color: '#1B1F6B' },
+  waiting: { label: 'ناطر رد', short: 'ناطر', icon: 'timer-sand', color: '#7C5CFF' },
+  reply: { label: 'لازم أرد', short: 'ما رديت', icon: 'reply', color: '#0E8F91' },
 };
 export const KIND_ORDER: Kind[] = ['todo', 'waiting', 'reply'];
 
 export const CATS: Record<Category, { label: string; icon: IconName; color: string }> = {
-  work: { label: 'عمل', icon: 'briefcase-outline', color: '#5B7CFF' },
-  home: { label: 'بيت', icon: 'home-outline', color: '#3DD68C' },
-  car: { label: 'سيارة', icon: 'car-outline', color: '#FF8A4C' },
-  family: { label: 'عائلة', icon: 'account-group-outline', color: '#FF6FAE' },
-  personal: { label: 'شخصي', icon: 'account-outline', color: '#B98CFF' },
-  money: { label: 'فلوس', icon: 'cash-multiple', color: '#FFD166' },
-  other: { label: 'أخرى', icon: 'dots-horizontal', color: '#9AA8C2' },
+  work: { label: 'شغل', icon: 'briefcase-outline', color: '#2F35A8' },
+  home: { label: 'بيت', icon: 'home-outline', color: '#0E8F91' },
+  car: { label: 'سيارة', icon: 'car-outline', color: '#C2570C' },
+  family: { label: 'عائلة', icon: 'account-group-outline', color: '#D9468F' },
+  personal: { label: 'شخصي', icon: 'account-outline', color: '#7C5CFF' },
+  money: { label: 'فلوس', icon: 'cash-multiple', color: '#B76E00' },
+  other: { label: 'أخرى', icon: 'dots-horizontal', color: '#6B7280' },
 };
 export const CAT_ORDER: Category[] = ['work', 'home', 'car', 'family', 'personal', 'money', 'other'];
 
@@ -69,6 +69,20 @@ export function dayLabel(d: Date, now = new Date()): string {
   if (diff === 2) return 'بعد بكرة';
   if (diff > 2 && diff < 7) return DAYS[d.getDay()];
   return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+
+/** "10:30 ص" / "1:00 م" */
+export function clock(d: Date): string {
+  const h = d.getHours();
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(d.getMinutes()).padStart(2, '0')} ${h < 12 ? 'ص' : 'م'}`;
+}
+
+/** "اليوم 9:00 ص", "بكرة 1:00 م", "الخميس 9:00 ص" */
+export function shortWhen(iso: string, now = new Date()): string {
+  const d = new Date(iso);
+  const day = dayDiff(d, now) === 0 ? '' : dayLabel(d, now) + ' ';
+  return day + clock(d);
 }
 
 export const whenLabel = (iso: string) => {

@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Aurora } from '../components/Aurora';
-import { Orb } from '../components/Orb';
-import { Wordmark } from '../components/Wordmark';
+import { Mark } from '../components/Logo';
 import { useStore } from '../lib/store';
-import { C, TS } from '../theme';
+import { C, F, TS } from '../theme';
 import { ErrorText, Field, PrimaryButton, T } from '../ui';
 
 export default function Login() {
@@ -27,23 +25,23 @@ export default function Login() {
 
   return (
     <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: C.bg }}>
-      <Aurora />
       <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24, paddingHorizontal: 24 }} keyboardShouldPersistTaps="handled">
         <View style={{ alignItems: 'center' }}>
-          <Orb state="idle" level={0} size={170} />
-          <Wordmark size={44} />
-          <T size={TS.body} color={C.sub} align="center" style={{ marginTop: 6 }}>
-            احكيله اللي عليك، وهو بيرتّب وبيذكّرك وبيتابع معك.
+          <Mark size={120} />
+          <T style={{ fontFamily: F.heavy, fontSize: 40, lineHeight: 58, color: C.indigo, marginTop: 6 }} align="center">غيث</T>
+          <T w="bold" size={11} color={C.sub} align="center" style={{ letterSpacing: 3 }}>AI TASK & REMINDER ASSISTANT</T>
+          <T w="semibold" size={TS.body} color={C.sub} align="center" style={{ marginTop: 12 }}>
+            احكيله اللي عليك مرة وحدة، وهو بيرتّبه وبيذكّرك فيه.
           </T>
         </View>
 
-        <View style={{ marginTop: 36 }}>
-          <T size={TS.small} color={C.faint}>ادخل بنفس حساب قديش</T>
+        <View style={{ marginTop: 32 }}>
+          <T w="semibold" size={TS.small} color={C.faint}>ادخل بنفس حساب قديش</T>
           <Field label="اسم المستخدم" value={username} onChangeText={setUsername} ltr autoComplete="username" returnKeyType="next" />
           <Field label="كلمة المرور" value={password} onChangeText={setPassword} secure ltr autoComplete="password" onSubmitEditing={submit} returnKeyType="go" />
           <ErrorText text={err} />
           <View style={{ marginTop: 22 }}>
-            <PrimaryButton label="دخول" onPress={submit} busy={busy} />
+            <PrimaryButton label="دخول" icon="arrow-left" onPress={submit} busy={busy} />
           </View>
         </View>
       </ScrollView>

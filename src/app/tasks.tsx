@@ -2,26 +2,25 @@ import { router, useLocalSearchParams } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Aurora } from '../components/Aurora';
 import { ScreenHeader } from '../components/ScreenHeader';
-import { TaskRow } from '../components/TaskRow';
+import { TaskCard } from '../components/TaskCard';
 import { TaskSheet } from '../components/TaskSheet';
 import { useStore } from '../lib/store';
 import { dayLabel, GroupKey, groupOf, GROUPS, Kind, KINDS, sortTasks, Task } from '../lib/tasks';
 import { useNow } from '../lib/useNow';
 import { C, TS } from '../theme';
-import { Card, Chip, HScroll, IconButton, Segmented, T } from '../ui';
+import { Chip, HScroll, IconButton, Segmented, T } from '../ui';
 
 const ORDER: GroupKey[] = ['late', 'today', 'tomorrow', 'week', 'later', 'someday'];
 
 /** Every task: open ones by when they're due, done ones by the day they were finished */
 export default function Tasks() {
   const insets = useSafeAreaInsets();
-  const { open: openId } = useLocalSearchParams<{ open?: string }>();
+  const { open: openId, kind: kindParam } = useLocalSearchParams<{ open?: string; kind?: Kind }>();
   const { tasks, complete, reopen, refresh } = useStore();
   const now = useNow();
   const [view, setView] = useState<'open' | 'done'>('open');
-  const [kind, setKind] = useState<Kind | null>(null);
+  const [kind, setKind] = useState<Kind | null>(() => (kindParam && kindParam in KINDS ? kindParam : null));
   const [sheet, setSheet] = useState<{ task: Task | null } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -63,11 +62,10 @@ export default function Tasks() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <Aurora />
       <ScreenHeader title="المهام" right={<IconButton icon="plus" label="أضف مهمة" onPress={() => setSheet({ task: null })} />} />
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 40 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => (setRefreshing(true), await refresh(), setRefreshing(false))} tintColor={C.accent} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => (setRefreshing(true), await refresh(), setRefreshing(false))} tintColor={C.glow} />}
       >
         <Segmented value={view} onChange={setView} options={[['open', 'مفتوحة'], ['done', 'خلصت']]} />
 
@@ -83,22 +81,20 @@ export default function Tasks() {
         )}
 
         {sections.map((g) => (
-          <View key={g.key} style={{ marginTop: 22 }}>
+          <View key={g.key} style={{ marginTop: 20 }}>
             <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginBottom: 8, paddingHorizontal: 4 }}>
-              <T w="semibold" size={TS.h2} color={g.late ? C.late : C.text}>{g.title}</T>
+              <T w="heavy" size={TS.h2} color={g.late ? C.late : C.indigo}>{g.title}</T>
               <T size={TS.small} color={C.faint}>{g.list.length}</T>
             </View>
-            <Card>
-              {g.list.map((t, i) => (
-                <TaskRow key={t.id} task={t} last={i === g.list.length - 1} onToggle={() => (t.status === 'done' ? reopen(t.id) : complete(t.id))} onOpen={() => setSheet({ task: t })} />
-              ))}
-            </Card>
+            {g.list.map((t) => (
+              <TaskCard key={t.id} task={t} onToggle={() => (t.status === 'done' ? reopen(t.id) : complete(t.id))} onOpen={() => setSheet({ task: t })} />
+            ))}
           </View>
         ))}
 
         {!sections.length && (
           <T color={C.sub} align="center" style={{ marginTop: 48 }}>
-            {view === 'open' ? (kind ? 'ما في مهام من هالنوع.' : 'ما في مهام مفتوحة. ارجع واحكي مع غيث.') : 'لما تخلّص مهمة بتطلع هون.'}
+            {view === 'open' ? (kind ? 'ما في مهام من هالنوع.' : 'ما في مهام مفتوحة. ارجع للرئيسية وسجّل اللي عليك.') : 'لما تخلّص مهمة بتطلع هون.'}
           </T>
         )}
       </ScrollView>

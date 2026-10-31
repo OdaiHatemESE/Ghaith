@@ -25,12 +25,10 @@ export function Sheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       {/* Android draws edge to edge, so the keyboard no longer resizes the window: make room on both platforms */}
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1, justifyContent: 'flex-end' }}>
-        <Pressable onPress={onClose} style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(22,20,43,0.32)' }} />
+        <Pressable onPress={onClose} style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(27,31,107,0.28)' }} />
         <View
           style={{
-            backgroundColor: C.bgSoft,
-            borderTopWidth: 1,
-            borderColor: C.line,
+            backgroundColor: C.bg,
             borderTopLeftRadius: 28,
             borderTopRightRadius: 28,
             maxHeight: '94%',
@@ -42,8 +40,8 @@ export function Sheet({
         >
           <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: C.lineHi, marginTop: 10 }} />
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 6 }}>
-            <T w="bold" size={TS.h2}>{title}</T>
-            <Pressable onPress={onClose} hitSlop={12} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center' }}>
+            <T w="heavy" size={TS.h2} color={C.indigo}>{title}</T>
+            <Pressable onPress={onClose} hitSlop={12} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="close" size={18} color={C.sub} />
             </Pressable>
           </View>

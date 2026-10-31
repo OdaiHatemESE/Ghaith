@@ -1,205 +1,288 @@
 import { router } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Aurora } from '../components/Aurora';
-import { Orb } from '../components/Orb';
-import { TaskRow } from '../components/TaskRow';
-import { Wordmark } from '../components/Wordmark';
-import { useConversation } from '../lib/conversation';
-import { Action, useStore } from '../lib/store';
-import { greeting, groupOf, longDate, sortTasks } from '../lib/tasks';
+import { countTasks, RecordView, ReviewView, ThinkingView, TypeSheet } from '../components/Capture';
+import { Logo } from '../components/Logo';
+import { Sunrise } from '../components/Sunrise';
+import { TaskCard } from '../components/TaskCard';
+import { TaskSheet } from '../components/TaskSheet';
+import { Draft, Source, useStore } from '../lib/store';
+import { clock, greeting, groupOf, longDate, sortTasks, startOfDay, Task } from '../lib/tasks';
 import { useNow } from '../lib/useNow';
-import { C, F, lift, TS } from '../theme';
-import { Icon, IconButton, IconName, T } from '../ui';
+import { useDictation } from '../lib/voice';
+import { C, GRADIENT, lift, R, tint, TS } from '../theme';
+import { Gradient, Icon, IconButton, IconName, Num, T } from '../ui';
 
-const STATUS = {
-  idle: 'اضغط واحكيلي',
-  listening: 'سامعك…',
-  thinking: 'لحظة، عم رتّب…',
-  speaking: '',
-};
+type Flow =
+  | { step: 'idle' }
+  | { step: 'recording'; startedAt: number }
+  | { step: 'typing'; mode: 'text' | 'email' }
+  | { step: 'thinking' }
+  | { step: 'review'; said: string; source: Source; drafts: Draft[] };
 
-const ACTION_UI: Record<Action['type'], { icon: IconName; color: string; word: string }> = {
-  added: { icon: 'plus', color: C.accent, word: 'أضفت' },
-  updated: { icon: 'pencil-outline', color: C.amber, word: 'عدّلت' },
-  done: { icon: 'check', color: C.ok, word: 'خلّصت' },
-  reopened: { icon: 'restore', color: C.amber, word: 'رجّعت' },
-  deleted: { icon: 'close', color: C.late, word: 'حذفت' },
-};
+/** "بعد 10 دقايق" / "بعد ساعة" / "الساعة 4:00 م" */
+function untilLabel(at: Date, now: Date): string {
+  const min = Math.round((at.getTime() - now.getTime()) / 60000);
+  if (min <= 1) return 'هلأ';
+  if (min < 60) return min === 2 ? 'بعد دقيقتين' : min <= 10 ? `بعد ${min} دقايق` : `بعد ${min} دقيقة`;
+  if (min < 120) return 'بعد ساعة';
+  return `الساعة ${clock(at)}`;
+}
 
 export default function Home() {
   const insets = useSafeAreaInsets();
-  const { name, tasks, complete } = useStore();
+  const { name, tasks, complete, reopen, capture, addDrafts } = useStore();
   const now = useNow();
-  const talk = useConversation();
-  const [typing, setTyping] = useState(false);
-  const [text, setText] = useState('');
+  const dict = useDictation();
+  const [flow, setFlow] = useState<Flow>({ step: 'idle' });
+  const [captureErr, setCaptureErr] = useState('');
+  const [toast, setToast] = useState('');
+  const [open, setOpen] = useState<Task | null | 'new'>(null);
 
-  const open = useMemo(() => tasks.filter((t) => t.status === 'open'), [tasks]);
-  const today = useMemo(() => sortTasks(open.filter((t) => ['late', 'today'].includes(groupOf(t, now)))), [open, now]);
-  const lateCount = today.filter((t) => groupOf(t, now) === 'late').length;
-  const waiting = open.filter((t) => t.kind === 'waiting').length;
-  const next = useMemo(() => sortTasks(open.filter((t) => ['tomorrow', 'week'].includes(groupOf(t, now)))).slice(0, 2), [open, now]);
+  const dayStart = startOfDay(now).getTime();
+  const openTasks = useMemo(() => tasks.filter((t) => t.status === 'open'), [tasks]);
+  const today = useMemo(() => sortTasks(openTasks.filter((t) => ['late', 'today'].includes(groupOf(t, now)))), [openTasks, now]);
+  const doneToday = useMemo(() => tasks.filter((t) => t.status === 'done' && t.done_at && new Date(t.done_at).getTime() >= dayStart), [tasks, dayStart]);
+  const next = useMemo(() => sortTasks(openTasks.filter((t) => ['tomorrow', 'week'].includes(groupOf(t, now)))).slice(0, 3), [openTasks, now]);
+  const late = openTasks.filter((t) => groupOf(t, now) === 'late').length;
+  const waiting = openTasks.filter((t) => t.kind === 'waiting').length;
+  const replies = openTasks.filter((t) => t.kind === 'reply').length;
+  const total = today.length + doneToday.length;
+  const firstTimed = today.map((t) => t.due_at ?? t.remind_at).filter((a): a is string => !!a && new Date(a) > now).sort()[0];
 
-  const active = talk.state !== 'idle';
-  const status = talk.state === 'listening' && talk.partial ? '' : STATUS[talk.state];
+  // The next reminder in the coming three hours
+  const upcoming = useMemo(() => {
+    const soon = openTasks
+      .filter((t) => t.remind_at && new Date(t.remind_at) > now && new Date(t.remind_at).getTime() - now.getTime() < 3 * 3600000)
+      .sort((a, b) => (a.remind_at! < b.remind_at! ? -1 : 1));
+    return soon[0] ?? null;
+  }, [openTasks, now]);
 
-  const submit = () => {
-    const t = text.trim();
-    if (!t) return;
-    setText('');
-    setTyping(false);
-    talk.sendText(t);
+  // ---------- capture ----------
+  const startRecording = () => {
+    setCaptureErr('');
+    dict.start(); // must run inside the tap on web
+    setFlow({ step: 'recording', startedAt: Date.now() });
+  };
+  const process = async (text: string, source: Source) => {
+    setFlow({ step: 'thinking' });
+    try {
+      const drafts = await capture(text, source);
+      setFlow({ step: 'review', said: text, source, drafts });
+    } catch (e) {
+      setCaptureErr((e as Error).message);
+      setFlow({ step: 'idle' });
+    }
+  };
+  const stopRecording = async () => {
+    const text = await dict.finish();
+    if (!text) {
+      setCaptureErr('ما سمعت شي، جرّب كمان مرة.');
+      return setFlow({ step: 'idle' });
+    }
+    process(text, 'voice');
+  };
+  const saveDrafts = async (drafts: Draft[], source: Source) => {
+    const e = await addDrafts(drafts, source);
+    if (e) return e;
+    setFlow({ step: 'idle' });
+    setToast(`انحفظت ${countTasks(drafts.length)}`);
+    setTimeout(() => setToast(''), 3200);
+    return null;
   };
 
   return (
-    <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: C.bg }}>
-      <Aurora />
-      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 10, paddingBottom: insets.bottom + 120 }} keyboardShouldPersistTaps="handled">
-        {/* Top bar */}
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
+      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: insets.bottom + 130 }}>
+        {/* Header */}
         <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20 }}>
-          <Wordmark size={30} />
-          <View style={{ flexDirection: 'row-reverse', gap: 10 }}>
-            <IconButton icon="history" label="المحادثات" onPress={() => router.push('/history')} />
-            <IconButton icon="cog-outline" label="الإعدادات" onPress={() => router.push('/settings')} />
+          <Logo size={34} />
+          <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
+            <IconButton icon="format-list-checks" label="كل المهام" onPress={() => router.push('/tasks')} />
+            <IconButton icon="tune-variant" label="الإعدادات" onPress={() => router.push('/settings')} />
           </View>
         </View>
 
-        <View style={{ paddingHorizontal: 24, marginTop: 18 }}>
-          <T size={TS.small} color={C.faint}>{longDate(now)}</T>
-          <T w="semibold" size={TS.display} style={{ lineHeight: 42 }}>
-            {greeting(now)}{name ? ` يا ${name}` : ''}
+        <View style={{ paddingHorizontal: 20, marginTop: 14 }}>
+          <T w="semibold" size={13} color={C.sub}>{greeting(now)}{name ? ` يا ${name}` : ''} ☀️</T>
+          <T w="heavy" size={TS.display} color={C.indigo} style={{ lineHeight: 38 }}>
+            {late ? 'خلّينا نلحق المتأخر أول' : total ? 'خلّينا نخلّي يومك مركّز' : 'يومك فاضي، استمتع فيه'}
           </T>
         </View>
 
-        {/* The orb */}
-        <Pressable
-          onPress={talk.tap}
-          onLongPress={() => (talk.stop(), setTyping(true))}
-          accessibilityRole="button"
-          accessibilityLabel={talk.state === 'listening' ? 'خلصت كلامي' : 'احكي مع غيث'}
-          style={{ alignItems: 'center', marginTop: 10 }}
-        >
-          <Orb state={talk.state} level={talk.level} size={250} />
+        {/* Today */}
+        <Pressable onPress={() => router.push('/tasks')} style={{ marginHorizontal: 20, marginTop: 14, height: 168, borderRadius: R.big, overflow: 'hidden', backgroundColor: C.indigo, shadowColor: C.indigo, shadowOpacity: 0.28, shadowRadius: 26, shadowOffset: { width: 0, height: 14 }, elevation: 8 }}>
+          <Sunrise />
+          <View style={{ position: 'absolute', top: 16, left: 18, backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: R.pill, paddingHorizontal: 10, paddingVertical: 2 }}>
+            <T w="semibold" size={12} color="#fff">{longDate(now)}</T>
+          </View>
+          <View style={{ padding: 18, paddingTop: 14 }}>
+            <T w="semibold" size={13} color="rgba(255,255,255,0.8)">مهام اليوم</T>
+            <View style={{ flexDirection: 'row-reverse', alignItems: 'baseline', gap: 8 }}>
+              <Num size={52} color="#fff">{total}</Num>
+              <T w="bold" size={15} color="rgba(255,255,255,0.9)">{total === 1 ? 'مهمة' : total === 2 ? 'مهمتين' : 'مهام'}</T>
+            </View>
+            <View style={{ height: 7, width: 170, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.18)', overflow: 'hidden', marginTop: 6 }}>
+              <View style={{ height: '100%', width: `${total ? Math.max(4, (doneToday.length / total) * 100) : 0}%`, borderRadius: 9, backgroundColor: C.teal }} />
+            </View>
+            <T w="semibold" size={12} color="rgba(255,255,255,0.85)" style={{ marginTop: 4 }}>
+              {total ? `خلّصت ${doneToday.length} · ضايل ${today.length}${firstTimed ? ` · أقربها ${clock(new Date(firstTimed))}` : ''}` : 'خطوات صغيرة اليوم، بكرة أوضح'}
+            </T>
+          </View>
         </Pressable>
 
-        {/* What was said and what غيث answered */}
-        <View style={{ paddingHorizontal: 28, minHeight: 96, alignItems: 'center' }}>
-          {talk.state === 'listening' && !!talk.partial && (
-            <T w="medium" size={20} align="center" style={{ lineHeight: 32 }}>{talk.partial}</T>
-          )}
-          {talk.state !== 'listening' && !!talk.turn?.said && (
-            <T size={TS.small} color={C.faint} align="center" numberOfLines={2}>«{talk.turn.said}»</T>
-          )}
-          {!!status && (
-            <T w="medium" size={TS.body} color={C.sub} align="center" style={{ marginTop: 6 }}>{status}</T>
-          )}
-          {talk.state !== 'listening' && talk.state !== 'thinking' && !!talk.turn?.reply && (
-            <T w="medium" size={18} align="center" style={{ lineHeight: 30, marginTop: 6 }}>{talk.turn.reply}</T>
-          )}
-          {!!talk.turn?.error && <T size={TS.small} color={C.late} align="center" style={{ marginTop: 6 }}>{talk.turn.error}</T>}
-          {!!talk.notice && <T size={TS.small} color={C.amber} align="center" style={{ marginTop: 6 }}>{talk.notice}</T>}
-
-          {talk.state !== 'thinking' && !!talk.turn?.actions.length && (
-            <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'center', gap: 6, marginTop: 12 }}>
-              {talk.turn.actions.map((a, i) => {
-                const ui = ACTION_UI[a.type];
-                return (
-                  <View key={i} style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 5, backgroundColor: ui.color + '1C', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5, maxWidth: '100%' }}>
-                    <Icon name={ui.icon} size={14} color={ui.color} />
-                    <T size={TS.tiny} color={C.text} numberOfLines={1} style={{ flexShrink: 1 }}>{ui.word}: {a.title}</T>
-                  </View>
-                );
-              })}
-            </View>
-          )}
-
-          <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 16 }}>
-            {!typing && (
-              <Pill icon="keyboard-outline" label="اكتب" onPress={() => (talk.stop(), setTyping(true))} />
-            )}
-            {active && <Pill icon="stop" label="إنهاء" onPress={talk.stop} />}
-          </View>
+        {/* Counters */}
+        <View style={{ flexDirection: 'row-reverse', gap: 10, marginHorizontal: 20, marginTop: 14 }}>
+          <Stat n={late} label="متأخرة" icon="alert-circle-outline" color={C.late} onPress={() => router.push('/tasks')} />
+          <Stat n={waiting} label="ناطر ردهم" icon="timer-sand" color={C.glow} onPress={() => router.push({ pathname: '/tasks', params: { kind: 'waiting' } })} />
+          <Stat n={replies} label="لازم أرد" icon="reply" color={C.tealDeep} onPress={() => router.push({ pathname: '/tasks', params: { kind: 'reply' } })} />
         </View>
 
-        {/* Today */}
-        <View style={{ marginTop: 26, marginHorizontal: 16, backgroundColor: C.surface, borderRadius: 26, borderWidth: 1, borderColor: C.glassBorder, ...lift }}>
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 16, paddingBottom: 6 }}>
-            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
-              <T w="semibold" size={TS.h2}>اليوم</T>
-              {lateCount > 0 && (
-                <View style={{ backgroundColor: C.lateSoft, borderRadius: 8, paddingHorizontal: 8 }}>
-                  <T size={TS.tiny} w="semibold" color={C.late}>{lateCount} متأخر</T>
-                </View>
-              )}
-              {waiting > 0 && (
-                <View style={{ backgroundColor: C.amberSoft, borderRadius: 8, paddingHorizontal: 8 }}>
-                  <T size={TS.tiny} w="semibold" color={C.amber}>ناطر {waiting}</T>
-                </View>
-              )}
+        {/* Next reminder */}
+        {upcoming && (
+          <Pressable onPress={() => setOpen(upcoming)} style={{ marginHorizontal: 20, marginTop: 12, backgroundColor: C.surface, borderRadius: R.pill, paddingVertical: 7, paddingRight: 8, paddingLeft: 16, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, ...lift }}>
+            <View style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              <Gradient colors={['#9B83FF', C.glow]} angle="diagonal" />
+              <Icon name="bell-outline" size={17} color="#fff" />
             </View>
-            <Pressable onPress={() => router.push('/tasks')} hitSlop={10} style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 2 }}>
-              <T size={TS.small} w="medium" color={C.accent}>كل المهام</T>
-              <Icon name="chevron-left" size={18} color={C.accent} />
-            </Pressable>
-          </View>
+            <View style={{ flex: 1 }}>
+              <T w="bold" size={11} color={C.glow}>تذكير · {untilLabel(new Date(upcoming.remind_at!), now)}</T>
+              <T w="semibold" size={13} numberOfLines={1}>{upcoming.title}</T>
+            </View>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.glow }} />
+          </Pressable>
+        )}
 
-          {today.slice(0, 6).map((t, i) => (
-            <TaskRow key={t.id} task={t} last={i === Math.min(today.length, 6) - 1 && !next.length} onToggle={() => complete(t.id)} onOpen={() => router.push({ pathname: '/tasks', params: { open: t.id } })} />
+        {!!captureErr && (
+          <View style={{ marginHorizontal: 20, marginTop: 12, flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: tint(C.late, 0.08), borderRadius: 14, padding: 10 }}>
+            <Icon name="alert-circle-outline" size={18} color={C.late} />
+            <T size={13} w="semibold" color={C.late} style={{ flex: 1 }}>{captureErr}</T>
+            <Pressable onPress={() => setCaptureErr('')} hitSlop={10}><Icon name="close" size={16} color={C.late} /></Pressable>
+          </View>
+        )}
+
+        {/* Today's list */}
+        <Section title="اليوم" action="كل المهام" onAction={() => router.push('/tasks')} />
+        <View style={{ paddingHorizontal: 20 }}>
+          {today.map((t) => (
+            <TaskCard key={t.id} task={t} onToggle={() => complete(t.id)} onOpen={() => setOpen(t)} />
           ))}
-          {!today.length && (
-            <View style={{ paddingHorizontal: 18, paddingVertical: 14 }}>
-              <T color={C.sub}>{open.length ? 'ما في شيء لليوم. يومك خفيف.' : 'لسا ما في مهام. احكيلي شو على بالك، مثلاً: «ذكرني بكرة الصبح أرد على إيميل المدير».'}</T>
+          {doneToday.slice(0, 4).map((t) => (
+            <TaskCard key={t.id} task={t} onToggle={() => reopen(t.id)} onOpen={() => setOpen(t)} />
+          ))}
+          {!total && (
+            <View style={{ backgroundColor: C.surface, borderRadius: R.card, padding: 16, alignItems: 'center', ...lift }}>
+              <Icon name="weather-sunny" size={28} color={C.teal} />
+              <T w="bold" align="center" style={{ marginTop: 4 }}>{openTasks.length ? 'ما في شي لليوم' : 'لسا ما في مهام'}</T>
+              <T size={13} color={C.sub} align="center">اضغط المايك واحكي كل اللي عليك مرة وحدة، وغيث بيرتّبه.</T>
             </View>
           )}
-          {today.length > 6 && (
-            <Pressable onPress={() => router.push('/tasks')} style={{ paddingHorizontal: 18, paddingVertical: 12 }}>
-              <T size={TS.small} color={C.accent}>و{today.length - 6} كمان…</T>
-            </Pressable>
-          )}
-          {!!next.length && (
-            <View style={{ borderTopWidth: 1, borderTopColor: C.line, paddingTop: 10 }}>
-              <T size={TS.tiny} w="medium" color={C.faint} style={{ paddingHorizontal: 18 }}>الجاي</T>
-              {next.map((t, i) => (
-                <TaskRow key={t.id} task={t} compact last={i === next.length - 1} onToggle={() => complete(t.id)} onOpen={() => router.push({ pathname: '/tasks', params: { open: t.id } })} />
+        </View>
+
+        {!!next.length && (
+          <>
+            <Section title="الجاي" />
+            <View style={{ paddingHorizontal: 20 }}>
+              {next.map((t) => (
+                <TaskCard key={t.id} task={t} onToggle={() => complete(t.id)} onOpen={() => setOpen(t)} />
               ))}
             </View>
-          )}
-        </View>
+          </>
+        )}
       </ScrollView>
 
-      {typing && (
-        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 12, paddingTop: 10, paddingBottom: insets.bottom + 12, backgroundColor: C.bgSoft, borderTopWidth: 1, borderTopColor: C.line, flexDirection: 'row-reverse', alignItems: 'flex-end', gap: 8 }}>
-          <TextInput
-            value={text}
-            onChangeText={setText}
-            placeholder="اكتب لغيث…"
-            placeholderTextColor={C.faint}
-            autoFocus
-            multiline
-            maxLength={2000}
-            onSubmitEditing={submit}
-            style={{ flex: 1, maxHeight: 120, backgroundColor: C.surfaceHi, borderRadius: 20, borderWidth: 1, borderColor: C.line, paddingHorizontal: 14, paddingVertical: 11, fontFamily: F.regular, fontSize: TS.body, color: C.text, textAlign: 'right', writingDirection: 'rtl' }}
-          />
-          <Pressable onPress={text.trim() ? submit : () => setTyping(false)} accessibilityLabel={text.trim() ? 'أرسل' : 'إغلاق'} style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: text.trim() ? C.accent : C.surfaceHi, alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name={text.trim() ? 'arrow-up' : 'close'} size={22} color="#fff" />
+      {/* Capture dock */}
+      <View pointerEvents="box-none" style={{ position: 'absolute', left: 16, right: 16, bottom: insets.bottom + 16 }}>
+        <View style={{ height: 74, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.96)', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-around', shadowColor: C.indigo, shadowOpacity: 0.16, shadowRadius: 30, shadowOffset: { width: 0, height: 14 }, elevation: 10, borderWidth: 1, borderColor: '#fff' }}>
+          <DockButton icon="format-text" label="اكتب" onPress={() => setFlow({ step: 'typing', mode: 'text' })} />
+          <Pressable onPress={startRecording} accessibilityRole="button" accessibilityLabel="سجّل مهامك بالصوت" style={{ alignItems: 'center', width: 96 }}>
+            <View style={{ width: 72, height: 72, borderRadius: 36, marginTop: -34, alignItems: 'center', justifyContent: 'center', borderWidth: 6, borderColor: '#fff', shadowColor: C.glow, shadowOpacity: 0.5, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 12, backgroundColor: C.indigoHi }}>
+              <Gradient colors={['#3B3FB8', GRADIENT[1]]} angle="diagonal" radius={36} />
+              <Icon name="microphone" size={30} color="#fff" />
+            </View>
+            <T w="bold" size={11.5} color={C.indigo} align="center" style={{ marginTop: 2 }}>سجّل</T>
           </Pressable>
+          <DockButton icon="email-outline" label="إيميل" onPress={() => setFlow({ step: 'typing', mode: 'email' })} />
+        </View>
+      </View>
+
+      {!!toast && (
+        <View pointerEvents="none" style={{ position: 'absolute', top: insets.top + 10, left: 0, right: 0, alignItems: 'center' }}>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: C.indigo, borderRadius: R.pill, paddingHorizontal: 16, paddingVertical: 9, ...lift }}>
+            <Icon name="check-circle" size={18} color={C.teal} />
+            <T w="bold" size={13.5} color="#fff">{toast}</T>
+          </View>
         </View>
       )}
-    </KeyboardAvoidingView>
+
+      {flow.step === 'recording' && (
+        <RecordView
+          text={dict.text}
+          level={dict.level}
+          error={dict.error}
+          startedAt={flow.startedAt}
+          onDone={stopRecording}
+          onCancel={() => (dict.cancel(), setFlow({ step: 'idle' }))}
+        />
+      )}
+      {flow.step === 'typing' && <TypeSheet mode={flow.mode} onClose={() => setFlow({ step: 'idle' })} onSubmit={(t) => process(t, flow.mode)} />}
+      {flow.step === 'thinking' && <ThinkingView />}
+      {flow.step === 'review' && (
+        <ReviewView
+          said={flow.said}
+          source={flow.source}
+          drafts={flow.drafts}
+          onSave={(d) => saveDrafts(d, flow.source)}
+          onClose={() => setFlow({ step: 'idle' })}
+          onRetry={() => (flow.source === 'voice' ? startRecording() : setFlow({ step: 'typing', mode: flow.source === 'email' ? 'email' : 'text' }))}
+        />
+      )}
+      {open && <TaskSheet task={open === 'new' ? null : open} onClose={() => setOpen(null)} />}
+    </View>
   );
 }
 
-function Pill({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
+function Section({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      style={({ pressed }) => ({ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: pressed ? C.surfaceHi : C.surface, borderWidth: 1, borderColor: C.glassBorder })}
-    >
-      <Icon name={icon} size={16} color={C.sub} />
-      <T size={TS.small} color={C.sub}>{label}</T>
+    <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 20, marginTop: 20, marginBottom: 8 }}>
+      <T w="heavy" size={17} color={C.indigo}>{title}</T>
+      {!!action && (
+        <Pressable onPress={onAction} hitSlop={10} style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 2 }}>
+          <T w="bold" size={12.5} color={C.glow}>{action}</T>
+          <Icon name="chevron-left" size={16} color={C.glow} />
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+function Stat({ n, label, icon, color, onPress }: { n: number; label: string; icon: IconName; color: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => ({ flex: 1, backgroundColor: pressed ? '#FBFBFF' : C.surface, borderRadius: R.card, padding: 12, gap: 4, ...lift })}>
+      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Num size={24} color={n ? color : C.faint}>{n}</Num>
+        <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: tint(color, 0.12), alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name={icon} size={16} color={color} />
+        </View>
+      </View>
+      <T w="semibold" size={12} color={C.sub}>{label}</T>
     </Pressable>
   );
+}
+
+function DockButton({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={{ alignItems: 'center', width: 70, gap: 2 }}>
+      <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name={icon} size={21} color={C.indigo} />
+      </View>
+      <T w="bold" size={11.5} color={C.indigo} align="center">{label}</T>
+    </Pressable>
+  );
+}
+
+// Keeps web from flashing the browser's default tap highlight on the dock
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  document.documentElement.style.setProperty('-webkit-tap-highlight-color', 'transparent');
 }

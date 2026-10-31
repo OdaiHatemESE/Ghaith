@@ -11,12 +11,12 @@
       "bundleIdentifier": "com.ghaith.app",
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "غيث بيحوّل كلامك لنص عشان يفهم المهام.",
-        "NSMicrophoneUsageDescription": "غيث بيحتاج المايك عشان تحكي معه وتعطيه مهامك بالصوت."
+        "NSMicrophoneUsageDescription": "غيث بيحتاج المايك عشان تسجّل مهامك بصوتك."
       }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#F6F5FB",
+        "backgroundColor": "#1B1F6B",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "monochromeImage": "./assets/android-icon-monochrome.png",
         "backgroundImage": "./assets/android-icon-background.png"
@@ -40,8 +40,8 @@
         "expo-splash-screen",
         {
           "image": "./assets/splash-icon.png",
-          "imageWidth": 160,
-          "backgroundColor": "#F6F5FB",
+          "imageWidth": 150,
+          "backgroundColor": "#F8FAFF",
           "resizeMode": "contain"
         }
       ],
@@ -49,13 +49,13 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#6C5CE7"
+          "color": "#7C5CFF"
         }
       ],
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "غيث بيحتاج المايك عشان تحكي معه وتعطيه مهامك بالصوت.",
+          "microphonePermission": "غيث بيحتاج المايك عشان تسجّل مهامك بصوتك.",
           "speechRecognitionPermission": "غيث بيحوّل كلامك لنص عشان يفهم المهام.",
           "androidSpeechServicePackages": [
             "com.google.android.googlequicksearchbox",

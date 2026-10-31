@@ -1,4 +1,4 @@
-// The signed-in person, their tasks, the conversation with غيث and their settings, in one place.
+// The signed-in person, their tasks and settings, and the capture step (what was said -> draft tasks), in one place.
 import type { Session } from '@supabase/supabase-js';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
@@ -6,12 +6,12 @@ import { loginEmail } from './config';
 import { friendlyError, supabase } from './supabase';
 import { Task, TASK_FIELDS } from './tasks';
 
-export type Action = { type: 'added' | 'updated' | 'done' | 'deleted' | 'reopened'; id: string; title: string };
-export type Message = { id: number; role: 'user' | 'assistant'; content: string; actions: Action[]; created_at: string };
 export type Voice = 'hamdan' | 'fatima' | 'device';
 export type Settings = { morning_time: string | null; evening_time: string | null; speak_replies: boolean; follow_up_days: number; voice: Voice; keep_listening: boolean };
 export const DEFAULT_SETTINGS: Settings = { morning_time: '08:00', evening_time: '20:00', speak_replies: true, follow_up_days: 3, voice: 'hamdan', keep_listening: true };
-export type Answer = { reply: string; actions: Action[]; end: boolean; audio: string | null; audioType: string | null };
+export type Source = 'voice' | 'text' | 'email';
+/** A task غيث pulled out of a capture, not saved yet */
+export type Draft = Pick<Task, 'title' | 'kind' | 'category' | 'priority' | 'person' | 'due_at' | 'remind_at' | 'repeat' | 'notes'> & { similar_to: string | null };
 
 type Status = 'loading' | 'out' | 'in';
 
@@ -19,14 +19,15 @@ type Store = {
   status: Status;
   name: string;
   tasks: Task[];
-  messages: Message[];
   settings: Settings;
   loaded: boolean;
   signIn: (username: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
-  /** Sends what the user said to غيث; resolves with غيث's reply (or throws a readable error) */
-  ask: (text: string, source: 'voice' | 'text', speak?: boolean) => Promise<Answer>;
+  /** Sends one capture to غيث; resolves with the draft tasks (or throws a readable error) */
+  capture: (text: string, source: Source) => Promise<Draft[]>;
+  /** Saves the drafts the user kept; returns an error sentence or null */
+  addDrafts: (drafts: Draft[], source: Source) => Promise<string | null>;
   complete: (id: string) => Promise<void>;
   reopen: (id: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
@@ -40,7 +41,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [name, setName] = useState('');
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [loaded, setLoaded] = useState(false);
   const userId = session?.user.id;
@@ -52,7 +52,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (!s) {
         // Signed out: forget everything that belonged to the previous person
         setTasks([]);
-        setMessages([]);
         setSettings(DEFAULT_SETTINGS);
         setName('');
         setLoaded(false);
@@ -70,30 +69,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (!open.error && !done.error) setTasks([...(open.data as Task[]), ...(done.data as Task[])]);
   }, []);
 
-  const loadMessages = useCallback(async () => {
-    const { data } = await supabase.from('ghaith_messages').select('id,role,content,actions,created_at').order('id', { ascending: false }).limit(60);
-    if (data) setMessages((data as Message[]).reverse());
-  }, []);
 
   const refresh = useCallback(async () => {
     if (!userId) return;
-    await Promise.all([loadTasks(), loadMessages()]);
+    await loadTasks();
     setLoaded(true);
-  }, [userId, loadTasks, loadMessages]);
+  }, [userId, loadTasks]);
 
-  // First load after sign-in: tasks, conversation, settings and the display name from the shared account
+  // First load after sign-in: tasks, settings and the display name from the shared account
   useEffect(() => {
     if (!userId) return;
     // The state updates happen after the network calls resolve, not synchronously in this effect
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    Promise.all([loadTasks(), loadMessages()]).then(() => setLoaded(true));
+    loadTasks().then(() => setLoaded(true));
     supabase.from('ghaith_settings').select('morning_time,evening_time,speak_replies,follow_up_days,voice,keep_listening').maybeSingle().then(({ data }) => {
       if (data) setSettings({ ...DEFAULT_SETTINGS, ...data, morning_time: data.morning_time?.slice(0, 5) ?? null, evening_time: data.evening_time?.slice(0, 5) ?? null });
     });
     supabase.from('profiles').select('display_name,username').eq('id', userId).maybeSingle().then(({ data }) => {
       setName((data?.display_name || data?.username || '').trim());
     });
-  }, [userId, loadTasks, loadMessages]);
+  }, [userId, loadTasks]);
 
   // Back to the app: pick up anything that changed (a reminder done from another device, a new day)
   const last = useRef(0);
@@ -116,28 +111,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
   }, []);
 
-  const ask = useCallback(
-    async (text: string, source: 'voice' | 'text', speak = false): Promise<Answer> => {
-      // Show what was said right away, the reply follows
-      const temp: Message = { id: -Date.now(), role: 'user', content: text, actions: [], created_at: new Date().toISOString() };
-      setMessages((m) => [...m, temp]);
-      const { data, error } = await supabase.functions.invoke('ghaith-agent', { body: { text, source, speak, voice: settings.voice } });
-      if (error) {
-        setMessages((m) => m.filter((x) => x.id !== temp.id));
-        let message = 'ما قدرت أوصل لغيث، تأكد من الإنترنت وجرّب كمان مرة.';
-        try {
-          const ctx = (error as { context?: Response }).context;
-          const body = ctx ? await ctx.json() : null;
-          if (body?.message) message = body.message;
-        } catch {
-          // keep the general message
-        }
-        throw new Error(message);
+  const capture = useCallback(async (text: string, source: Source): Promise<Draft[]> => {
+    const { data, error } = await supabase.functions.invoke('ghaith-capture', { body: { text, source } });
+    if (error) {
+      let message = 'ما قدرت أوصل لغيث، تأكد من الإنترنت وجرّب كمان مرة.';
+      try {
+        const ctx = (error as { context?: Response }).context;
+        const body = ctx ? await ctx.json() : null;
+        if (body?.message) message = body.message;
+      } catch {
+        // keep the general message
       }
-      await Promise.all([loadTasks(), loadMessages()]);
-      return { reply: String(data?.reply ?? ''), actions: (data?.actions ?? []) as Action[], end: !!data?.end, audio: data?.audio ?? null, audioType: data?.audio_type ?? null };
+      throw new Error(message);
+    }
+    return (data?.tasks ?? []) as Draft[];
+  }, []);
+
+  const addDrafts = useCallback(
+    async (drafts: Draft[], source: Source) => {
+      if (!drafts.length) return null;
+      const rows = drafts.map(({ similar_to: _s, ...d }) => ({ ...d, source: source === 'email' ? 'text' : source }));
+      const { error } = await supabase.from('ghaith_tasks').insert(rows);
+      await loadTasks();
+      return error ? friendlyError(error) : null;
     },
-    [loadTasks, loadMessages, settings.voice],
+    [loadTasks],
   );
 
   const patchLocal = (id: string, fields: Partial<Task>) => setTasks((list) => list.map((t) => (t.id === id ? { ...t, ...fields } : t)));
@@ -196,8 +194,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const status: Status = session === undefined ? 'loading' : session ? 'in' : 'out';
   const value = useMemo(
-    () => ({ status, name, tasks, messages, settings, loaded, signIn, signOut, refresh, ask, complete, reopen, remove, save, saveSettings }),
-    [status, name, tasks, messages, settings, loaded, signIn, signOut, refresh, ask, complete, reopen, remove, save, saveSettings],
+    () => ({ status, name, tasks, settings, loaded, signIn, signOut, refresh, capture, addDrafts, complete, reopen, remove, save, saveSettings }),
+    [status, name, tasks, settings, loaded, signIn, signOut, refresh, capture, addDrafts, complete, reopen, remove, save, saveSettings],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -1,11 +1,12 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import React from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleProp, Text, TextInput, TextInputProps, TextProps, TextStyle, View, ViewStyle } from 'react-native';
-import { C, F, lift, TS } from './theme';
+import React, { useId } from 'react';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleProp, Text, TextInput, TextInputProps, TextProps, TextStyle, View, ViewStyle } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import { C, F, GRADIENT, lift, R, tint, TS } from './theme';
 
-type Weight = 'regular' | 'medium' | 'semibold' | 'bold';
+type Weight = 'regular' | 'medium' | 'semibold' | 'bold' | 'heavy';
 
-/** Arabic text: Readex Pro, right aligned, RTL bidi */
+/** Arabic text: Cairo, right aligned, RTL bidi */
 export function T({
   w = 'regular',
   size = TS.body,
@@ -17,9 +18,14 @@ export function T({
   return (
     <Text
       {...rest}
-      style={[{ fontFamily: F[w], fontSize: size, color, textAlign: align, writingDirection: 'rtl', lineHeight: Math.round(size * 1.6) }, style]}
+      style={[{ fontFamily: F[w], fontSize: size, color, textAlign: align, writingDirection: 'rtl', lineHeight: Math.round(size * 1.55) }, style]}
     />
   );
+}
+
+/** Numbers in Manrope */
+export function Num({ children, size = 24, color = C.indigo, style }: { children: React.ReactNode; size?: number; color?: string; style?: StyleProp<TextStyle> }) {
+  return <Text style={[{ fontFamily: F.num, fontSize: size, color, lineHeight: Math.round(size * 1.15) }, style]}>{children}</Text>;
 }
 
 export type IconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -28,17 +34,37 @@ export function Icon({ name, size = 22, color = C.text }: { name: IconName; size
   return <MaterialCommunityIcons name={name} size={size} color={color} />;
 }
 
-/** Round icon button for headers */
-export function IconButton({ icon, onPress, label, size = 42 }: { icon: IconName; onPress: () => void; label: string; size?: number }) {
+/** A gradient that fills its parent (drawn with SVG so it ships without a new native module) */
+export function Gradient({ colors = GRADIENT, angle = 'horizontal', radius = 0, style }: { colors?: readonly string[]; angle?: 'horizontal' | 'diagonal' | 'vertical'; radius?: number; style?: StyleProp<ViewStyle> }) {
+  const id = 'g' + useId().replace(/[^a-zA-Z0-9]/g, '');
+  const [x2, y2] = angle === 'horizontal' ? ['1', '0'] : angle === 'vertical' ? ['0', '1'] : ['1', '1'];
+  return (
+    <View pointerEvents="none" style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: radius, overflow: 'hidden' }, style]}>
+      <Svg width="100%" height="100%">
+        <Defs>
+          <LinearGradient id={id} x1="0" y1="0" x2={x2} y2={y2}>
+            {colors.map((c, i) => (
+              <Stop key={i} offset={String(i / (colors.length - 1))} stopColor={c} />
+            ))}
+          </LinearGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill={`url(#${id})`} />
+      </Svg>
+    </View>
+  );
+}
+
+/** Rounded-square icon button (header actions) */
+export function IconButton({ icon, onPress, label, size = 42, color = C.indigo }: { icon: IconName; onPress: () => void; label: string; size?: number; color?: string }) {
   return (
     <Pressable
       onPress={onPress}
       accessibilityLabel={label}
       accessibilityRole="button"
       hitSlop={6}
-      style={({ pressed }) => ({ width: size, height: size, borderRadius: size / 2, backgroundColor: pressed ? C.surfaceHi : C.surface, borderWidth: 1, borderColor: C.glassBorder, alignItems: 'center', justifyContent: 'center' })}
+      style={({ pressed }) => ({ width: size, height: size, borderRadius: 14, backgroundColor: pressed ? C.surfaceAlt : C.surface, alignItems: 'center', justifyContent: 'center', ...lift })}
     >
-      <Icon name={icon} size={size * 0.48} color={C.text} />
+      <Icon name={icon} size={size * 0.5} color={color} />
     </Pressable>
   );
 }
@@ -52,14 +78,14 @@ export function HScroll({ children, gap = 8, style }: { children: React.ReactNod
       horizontal
       showsHorizontalScrollIndicator={false}
       onContentSizeChange={() => ref.current?.scrollToEnd({ animated: false })}
-      contentContainerStyle={[{ flexDirection: 'row-reverse', gap }, style]}
+      contentContainerStyle={[{ flexDirection: 'row-reverse', gap, paddingVertical: 2 }, style]}
     >
       {children}
     </ScrollView>
   );
 }
 
-export function Chip({ label, on, onPress, icon, color = C.accent }: { label: string; on: boolean; onPress: () => void; icon?: IconName; color?: string }) {
+export function Chip({ label, on, onPress, icon, color = C.glow }: { label: string; on: boolean; onPress: () => void; icon?: IconName; color?: string }) {
   return (
     <Pressable
       onPress={onPress}
@@ -69,24 +95,34 @@ export function Chip({ label, on, onPress, icon, color = C.accent }: { label: st
         flexDirection: 'row-reverse',
         alignItems: 'center',
         gap: 6,
-        paddingHorizontal: 13,
-        paddingVertical: 8,
-        borderRadius: 12,
-        backgroundColor: on ? color + '1F' : C.surface,
-        borderWidth: 1,
-        borderColor: on ? color : C.glassBorder,
+        paddingHorizontal: 14,
+        paddingVertical: 7,
+        borderRadius: R.pill,
+        backgroundColor: on ? tint(color, 0.12) : C.surface,
+        borderWidth: 1.5,
+        borderColor: on ? color : C.line,
       }}
     >
       {icon && <Icon name={icon} size={15} color={on ? color : C.sub} />}
-      <T size={TS.small} w={on ? 'semibold' : 'regular'} color={on ? C.text : C.sub}>{label}</T>
+      <T size={TS.small} w={on ? 'bold' : 'medium'} color={on ? C.indigo : C.sub}>{label}</T>
     </Pressable>
+  );
+}
+
+/** Small read-only tag: kind, category, time */
+export function Tag({ label, color = C.indigo, bg, icon }: { label: string; color?: string; bg?: string; icon?: IconName }) {
+  return (
+    <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 2, borderRadius: R.pill, backgroundColor: bg ?? tint(color, 0.1) }}>
+      {icon && <Icon name={icon} size={12} color={color} />}
+      <T size={TS.tiny} w="bold" color={color}>{label}</T>
+    </View>
   );
 }
 
 /** Two or three options in one rounded track */
 export function Segmented<K extends string>({ value, options, onChange }: { value: K; options: [K, string][]; onChange: (k: K) => void }) {
   return (
-    <View style={{ flexDirection: 'row-reverse', backgroundColor: C.surface, borderRadius: 14, padding: 4, borderWidth: 1, borderColor: C.glassBorder }}>
+    <View style={{ flexDirection: 'row-reverse', backgroundColor: C.surfaceAlt, borderRadius: R.pill, padding: 4 }}>
       {options.map(([k, label]) => {
         const on = k === value;
         return (
@@ -95,9 +131,9 @@ export function Segmented<K extends string>({ value, options, onChange }: { valu
             onPress={() => onChange(k)}
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}
-            style={{ flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: on ? C.surfaceHi : 'transparent', alignItems: 'center', ...(on ? lift : {}) }}
+            style={{ flex: 1, paddingVertical: 8, borderRadius: R.pill, backgroundColor: on ? C.surface : 'transparent', alignItems: 'center', ...(on ? lift : {}) }}
           >
-            <T size={TS.small} w={on ? 'semibold' : 'regular'} color={on ? C.text : C.sub} align="center">{label}</T>
+            <T size={TS.small} w={on ? 'bold' : 'medium'} color={on ? C.indigo : C.sub} align="center">{label}</T>
           </Pressable>
         );
       })}
@@ -105,55 +141,69 @@ export function Segmented<K extends string>({ value, options, onChange }: { valu
   );
 }
 
-export function PrimaryButton({ label, onPress, busy = false, disabled = false, icon, tone = 'accent' }: { label: string; onPress: () => void; busy?: boolean; disabled?: boolean; icon?: IconName; tone?: 'accent' | 'late' }) {
+/** Gradient pill: the main action on a screen */
+export function PrimaryButton({ label, onPress, busy = false, disabled = false, icon, tone = 'brand', style }: { label: string; onPress: () => void; busy?: boolean; disabled?: boolean; icon?: IconName; tone?: 'brand' | 'late'; style?: StyleProp<ViewStyle> }) {
   return (
     <Pressable
       onPress={busy || disabled ? undefined : onPress}
       accessibilityRole="button"
       accessibilityState={{ busy, disabled }}
-      style={({ pressed }) => ({
-        backgroundColor: tone === 'late' ? C.late : C.accent,
-        borderRadius: 16,
-        paddingVertical: 15,
-        flexDirection: 'row-reverse',
-        justifyContent: 'center',
-        alignItems: 'center',
-        gap: 8,
-        opacity: disabled ? 0.4 : pressed || busy ? 0.85 : 1,
-      })}
+      style={({ pressed }) => [
+        {
+          height: 54,
+          borderRadius: R.pill,
+          flexDirection: 'row-reverse',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: 8,
+          opacity: disabled ? 0.45 : pressed || busy ? 0.88 : 1,
+          shadowColor: C.glow,
+          shadowOpacity: disabled ? 0 : 0.35,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 10 },
+          elevation: disabled ? 0 : 5,
+          backgroundColor: tone === 'late' ? C.late : C.indigoHi,
+        },
+        style,
+      ]}
     >
+      {tone === 'brand' && <Gradient radius={R.pill} />}
       {busy ? (
         <ActivityIndicator color="#fff" />
       ) : (
         <>
+          <T w="heavy" size={16} color="#fff" align="center">{label}</T>
           {icon && <Icon name={icon} size={20} color="#fff" />}
-          <T w="semibold" size={16} color="#fff" align="center">{label}</T>
         </>
       )}
     </Pressable>
   );
 }
 
-export function GhostButton({ label, onPress, icon, color = C.text }: { label: string; onPress: () => void; icon?: IconName; color?: string }) {
+/** Outline pill: the secondary action */
+export function GhostButton({ label, onPress, icon, color = C.indigo, style }: { label: string; onPress: () => void; icon?: IconName; color?: string; style?: StyleProp<ViewStyle> }) {
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      style={({ pressed }) => ({
-        flex: 1,
-        borderRadius: 14,
-        paddingVertical: 12,
-        backgroundColor: pressed ? C.surfaceHi : C.surface,
-        borderWidth: 1,
-        borderColor: C.lineHi,
-        flexDirection: 'row-reverse',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 6,
-      })}
+      style={({ pressed }) => [
+        {
+          flex: 1,
+          height: 48,
+          borderRadius: R.pill,
+          backgroundColor: pressed ? C.surfaceAlt : C.surface,
+          borderWidth: 1.5,
+          borderColor: C.lineHi,
+          flexDirection: 'row-reverse',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+        },
+        style,
+      ]}
     >
       {icon && <Icon name={icon} size={18} color={color} />}
-      <T w="medium" size={TS.small} color={color}>{label}</T>
+      <T w="bold" size={TS.body} color={color}>{label}</T>
     </Pressable>
   );
 }
@@ -172,6 +222,7 @@ export function Field({
   returnKeyType,
   autoComplete,
   maxLength,
+  minHeight,
 }: {
   label?: string;
   value: string;
@@ -185,12 +236,13 @@ export function Field({
   returnKeyType?: TextInputProps['returnKeyType'];
   autoComplete?: TextInputProps['autoComplete'];
   maxLength?: number;
+  minHeight?: number;
 }) {
   const [hidden, setHidden] = React.useState(true);
   return (
     <View style={{ marginTop: label ? 14 : 0 }}>
-      {!!label && <T w="medium" size={TS.small} color={C.sub} style={{ marginBottom: 6 }}>{label}</T>}
-      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: C.surfaceHi, borderRadius: 14, borderWidth: 1, borderColor: C.line }}>
+      {!!label && <T w="semibold" size={TS.small} color={C.sub} style={{ marginBottom: 6 }}>{label}</T>}
+      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: C.surface, borderRadius: R.card, borderWidth: 1.5, borderColor: C.line }}>
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -210,15 +262,16 @@ export function Field({
             flex: 1,
             minWidth: 0,
             width: '100%',
-            fontFamily: F.regular,
+            fontFamily: F.medium,
             fontSize: TS.body,
             color: C.text,
             textAlign: 'right',
             writingDirection: ltr ? 'ltr' : 'rtl',
             paddingHorizontal: 14,
-            paddingVertical: 13,
-            minHeight: multiline ? 76 : undefined,
+            paddingVertical: 12,
+            minHeight: multiline ? minHeight ?? 76 : undefined,
             textAlignVertical: multiline ? 'top' : 'center',
+            ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null),
           }}
         />
         {secure && (
@@ -232,13 +285,13 @@ export function Field({
 }
 
 export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
-  return <View style={[{ backgroundColor: C.surface, borderRadius: 22, borderWidth: 1, borderColor: C.glassBorder, ...lift }, style]}>{children}</View>;
+  return <View style={[{ backgroundColor: C.surface, borderRadius: R.card, ...lift }, style]}>{children}</View>;
 }
 
 export function ErrorText({ text }: { text: string }) {
   if (!text) return null;
   return (
-    <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: C.lateSoft, borderRadius: 12, padding: 10, marginTop: 14 }}>
+    <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: tint(C.late, 0.09), borderRadius: 12, padding: 10, marginTop: 14 }}>
       <Icon name="alert-circle-outline" size={18} color={C.late} />
       <T size={TS.small} color={C.late} style={{ flex: 1 }}>{text}</T>
     </View>
@@ -246,25 +299,25 @@ export function ErrorText({ text }: { text: string }) {
 }
 
 export function Label({ children }: { children: string }) {
-  return <T w="medium" size={TS.small} color={C.sub} style={{ marginTop: 18, marginBottom: 8 }}>{children}</T>;
+  return <T w="bold" size={TS.small} color={C.sub} style={{ marginTop: 18, marginBottom: 8 }}>{children}</T>;
 }
 
 /** Settings-style row: icon, title, optional detail, and something on the left */
 export function ListRow({ icon, title, detail, onPress, last, danger, right }: { icon?: IconName; title: string; detail?: string; onPress?: () => void; last?: boolean; danger?: boolean; right?: React.ReactNode }) {
-  const tint = danger ? C.late : C.accent;
+  const color = danger ? C.late : C.glow;
   return (
     <Pressable
       onPress={onPress}
       disabled={!onPress}
-      style={({ pressed }) => ({ flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, backgroundColor: pressed ? C.surfaceHi : 'transparent' })}
+      style={({ pressed }) => ({ flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 13, backgroundColor: pressed ? C.bg : 'transparent' })}
     >
       {icon && (
-        <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: tint + '22', alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name={icon} size={19} color={tint} />
+        <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: tint(color, 0.12), alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name={icon} size={19} color={color} />
         </View>
       )}
       <View style={{ flex: 1, marginRight: icon ? 12 : 0 }}>
-        <T w="medium" color={danger ? C.late : C.text}>{title}</T>
+        <T w="semibold" color={danger ? C.late : C.text}>{title}</T>
         {!!detail && <T size={TS.small} color={C.sub}>{detail}</T>}
       </View>
       {right}
@@ -282,9 +335,35 @@ export function Toggle({ value, onChange, label }: { value: boolean; onChange: (
       accessibilityState={{ checked: value }}
       accessibilityLabel={label}
       hitSlop={8}
-      style={{ width: 48, height: 28, borderRadius: 14, padding: 3, backgroundColor: value ? C.accent : C.lineHi, flexDirection: 'row', justifyContent: value ? 'flex-start' : 'flex-end' }}
+      style={{ width: 48, height: 28, borderRadius: 14, padding: 3, backgroundColor: value ? C.teal : C.lineHi, flexDirection: 'row', justifyContent: value ? 'flex-start' : 'flex-end' }}
     >
       <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff' }} />
+    </Pressable>
+  );
+}
+
+/** Round check used on task cards */
+export function Check({ on, onPress, size = 26, label }: { on: boolean; onPress?: () => void; size?: number; label?: string }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      hitSlop={10}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: on }}
+      accessibilityLabel={label}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        borderWidth: 2,
+        borderColor: on ? C.teal : C.lineHi,
+        backgroundColor: on ? C.teal : 'transparent',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {on && <Icon name="check-bold" size={size * 0.58} color="#fff" />}
     </Pressable>
   );
 }
