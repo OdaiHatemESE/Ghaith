@@ -19,7 +19,7 @@
 
 ## التجربة
 - **رابط الويب:** https://odaihatemese.github.io/Ghaith/ — كل push على `main` بينشر نسخة على GitHub Pages (`.github/workflows/web-preview.yml`). الإشعارات ما بتشتغل على المتصفح.
-- **APK:** يدوي فقط: من Actions ← Build Android APK ← Run workflow، أو بدفع tag اسمه `apk-*`. بينزل على Releases.
+- **APK:** يدوي فقط: من Actions ← Build Android APK ← Run workflow، أو بتعديل الملف `.github/apk-request` ورفعه على `main`. بينزل على Releases.
 - **التحديثات بدون APK جديد (OTA):** كل push على `main` بيغيّر الشاشات بينشر تحديث على EAS (`eas-update.yml`)، والتطبيق بيشيّك كل ما ينفتح ويرجع لحاله للنسخة الجديدة (`src/components/AutoUpdate.tsx`). أول مرة بدها السر `EXPO_TOKEN` بالـ repo، و`eas-setup.yml` بيربط المشروع لحاله. أي تغيير native (صلاحية أو مكتبة جديدة) بده APK جديد ورفع رقم النسخة.
 
 ## التطوير

@@ -1,10 +1,12 @@
 name: Build Android APK
 
-# Runs only when asked: by hand (Actions → Build Android APK → Run workflow) or by pushing a tag named apk-*
+# Runs only when asked: by hand (Actions → Build Android APK → Run workflow), or when .github/apk-request changes
+# (write a line there, e.g. the reason, and push to main)
 on:
   workflow_dispatch:
   push:
-    tags: ['apk-*']
+    branches: [main]
+    paths: ['.github/apk-request']
 
 permissions:
   contents: write
