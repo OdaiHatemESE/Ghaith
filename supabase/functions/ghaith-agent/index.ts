@@ -8,8 +8,8 @@
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { speakArabic } from '../_shared/tts.ts';
 
-const MODEL = Deno.env.get('GHAITH_MODEL') || 'claude-haiku-5-5';
-const MAX_STEPS = 6;
+const MODEL = Deno.env.get('GHAITH_MODEL') || 'claude-sonnet-5-5';
+const MAX_STEPS = 8;
 const DAILY_LIMIT = 300;
 const TZ_OFFSET_H = 4; // Asia/Dubai, no daylight saving
 
@@ -123,6 +123,16 @@ const TOOLS = [
     input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
   },
   {
+    name: 'remember',
+    description: 'يحفظ معلومة ثابتة عن المستخدم أو شغله (مديره، الجهات، المشاريع، الفريق) لتفهمه أحسن بالمحادثات الجاية.',
+    input_schema: { type: 'object', properties: { fact: { type: 'string', description: 'جملة قصيرة، مثل: مديره اسمه خالد' } }, required: ['fact'] },
+  },
+  {
+    name: 'forget',
+    description: 'يحذف معلومة محفوظة إذا طلب أو إذا صارت غلط.',
+    input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+  },
+  {
     name: 'search_tasks',
     description: 'يبحث بالمهام المنتهية أو القديمة (المفتوحة موجودة عندك أصلاً). استخدمه لأسئلة مثل "شو خلصت هالأسبوع" أو "شو صار بموضوع كذا".',
     input_schema: {
@@ -136,21 +146,42 @@ const TOOLS = [
   },
 ];
 
-function systemPrompt(now: Date, open: Task[], followUpDays: number, name: string | null): string {
+function systemPrompt(now: Date, open: Task[], followUpDays: number, name: string | null, notes: { id: string; fact: string }[]): string {
   const list = open.length ? open.map((t) => '- ' + describe(t, now)).join('\n') : '(ما في مهام مفتوحة)';
+  const known = notes.length ? notes.map((n) => `- [${n.id.slice(0, 8)}] ${n.fact}`).join('\n') : '(لسا ما في)';
   return `أنت "غيث"، السكرتير والمساعد الشخصي${name ? ` لـ ${name}` : ''}. هو موظف إداري بجهة حكومية بالإمارات، عنده إيميلات ومهام كثيرة وبينسى. شغلتك تدير مهامه: تسجّلها، تصنّفها، تذكّره فيها، وتتابع معه لحد ما تخلص. غالباً بيحكي معك بالصوت وهو سايق أو ماشي، فالنص اللي بيوصلك تحويل صوت لنص وممكن فيه أخطاء إملائية بسيطة: افهم المقصود.
 
 الوقت الآن: ${localIso(now)} يوم ${weekday(now)} (توقيت دبي). الويك إند بالإمارات السبت والأحد.
 التقويم للأيام الجاية:
 ${calendar(now)}
 
-المهام المفتوحة حالياً:
+المهام المفتوحة حالياً (الأحدث إضافةً آخر وحدة بتاريخ الإضافة):
 ${list}
 
+شو بتعرف عنه (من محادثات سابقة):
+${known}
+
 كيف تشتغل:
-- نفّذ مباشرة بالأدوات. لا تسأل "بدك أضيفها؟"؛ أضف وخبّره شو عملت. اسأل فقط إذا الطلب غامض فعلاً (مثلاً ما بتعرف أي مهمة قصده بين مهمتين متشابهتين).
-- جملة وحدة ممكن يكون فيها أكثر من مهمة أو أمر: نفّذهم كلهم.
-- لما يحكي عن مهمة موجودة ("أجّل موضوع السيارة"، "خلصت الإيميل")، طابقها من القائمة فوق بالمعنى واستخدم رقمها. لا تضيف مهمة مكررة.
+- نفّذ مباشرة بالأدوات وخبّره شو عملت. لا تسأل "بدك أضيفها؟".
+- جملة وحدة ممكن يكون فيها أكثر من مهمة أو أمر: نفّذهم كلهم، وكل شغلة مستقلة مهمة لحالها.
+
+إضافة ولا تعديل؟ (أهم قاعدة)
+- الأصل إنه كل طلب جديد = مهمة جديدة (add_tasks). عنده مهام كثيرة متشابهة بالشكل ومختلفة بالموضوع (رد على إيميل جهة، رد على إيميل جهة ثانية، رد على إيميل المدير...). تشابه العنوان أو الكلمات مش سبب أبداً لتعديل مهمة موجودة أو دمجها.
+- "ضيف/سجّل/ذكّرني/عندي/لازم/مهمة جديدة/كمان" = إضافة جديدة دائماً، حتى لو في مهمة بعنوان مشابه.
+- التعديل (update/complete/delete) فقط لما يكون واضح إنه بيقصد مهمة موجودة بعينها: بيستخدم فعل تعديل (أجّل، غيّر، عدّل، انقل، خلصت، انعملت، الغي، احذف، فلان رد) + تفاصيل بتحددها (الجهة، الشخص، الموضوع، أو "هاي اللي ضفتها هلأ").
+- إذا قال فعل تعديل وفي أكثر من مهمة ممكن يقصدها ("خلصت رد الإيميل" وعنده ثلاث إيميلات): لا تخمّن، اسأله "أي واحد؟" واذكر الخيارات باختصار.
+- لا تدمج مهمتين، ولا تغيّر عنوان مهمة لتضيف عليها شغلة ثانية.
+
+عناوين واضحة:
+- العنوان لازم يميّز المهمة عن غيرها: الفعل + الموضوع + الجهة/الشخص، مثل "الرد على إيميل وزارة المالية بخصوص الميزانية" مش "رد إيميل".
+- إذا الطلب ناقص تفصيلة مهمة (رد على إيميل مين؟ عن شو؟): أضف المهمة بالمعلومات الموجودة بعنوان طبيعي (مثل "الرد على إيميل")، وبنفس الرد اسأل سؤال واحد قصير لتكملها.
+- جواب على سؤالك مش طلب جديد: إذا آخر رد إلك كان سؤال عن تفاصيل مهمة ضفتها (رقمها مكتوب بسطر "اللي عملته")، ورسالته الحالية بتجاوب عليه، اعمل update_task لنفس المهمة (العنوان والشخص والتفاصيل)، ولا تضيف مهمة ثانية. إذا رسالته فيها كمان طلبات جديدة، نفّذها هي كمان.
+
+ذاكرتك عنه:
+- إذا ذكر معلومة ثابتة بتفيدك تفهمه بعدين (مين مديره، الجهات اللي بيتعامل معها، أسماء مشاريعه، فريقه، دوامه)، احفظها بـ remember بجملة قصيرة. لا تحفظ مهام ولا مواعيد ولا أشياء مؤقتة ولا معلومات حساسة (صحة، فلوس شخصية).
+- استخدم المعلومات المحفوظة لتفهم كلامه وتختار الجهة والتصنيف الصح.
+
+التصنيف والأوقات:
 - النوع: "لازم أعمل/أخلّص/أجهّز" = todo. "بعتت لفلان وناطر/طلبت من/فلان رح يبعتلي" = waiting. "فلان بعتلي/وصلني إيميل/لازم أرد على" = reply.
 - التصنيف: خمّن من السياق (المدير، الاجتماع، البوابة، التقرير، إيميل شغل = work؛ تأمين/تسجيل/صيانة/مخالفة سيارة = car؛ فواتير/دفعات = money؛ أغراض/تصليح البيت = home؛ الأولاد/المدرسة/الأهل = family). إذا مش واضح وكان الكلام عن إيميل أو شخص بالشغل فهو work.
 - الأولوية high فقط إذا قال مستعجل/ضروري/مهم جداً أو الموعد اليوم أو بكرة لشغلة شغل حساسة.
@@ -254,6 +285,21 @@ async function runTool(db: SupabaseClient, name: string, input: Record<string, u
     return (data as Task[]).length ? (data as Task[]).map((t) => `${describe(t, now)} | الحالة: ${t.status}`).join('\n') : 'ما لقيت شيء';
   }
 
+  if (name === 'remember') {
+    const fact = String(input.fact ?? '').trim().slice(0, 400);
+    if (fact.length < 2) return 'خطأ: المعلومة فاضية';
+    const { error } = await db.from('ghaith_notes').insert({ fact });
+    return error ? `خطأ: ${error.message}` : 'انحفظت';
+  }
+  if (name === 'forget') {
+    const short = String(input.id ?? '').replace(/[^0-9a-f-]/gi, '').toLowerCase();
+    const { data } = await db.from('ghaith_notes').select('id');
+    const hit = (data as { id: string }[] | null)?.find((n) => short.length >= 6 && n.id.startsWith(short));
+    if (!hit) return 'خطأ: ما لقيت المعلومة';
+    await db.from('ghaith_notes').delete().eq('id', hit.id);
+    return 'انحذفت';
+  }
+
   const task = await resolveId(db, input.id);
   if (!task) return 'خطأ: ما لقيت مهمة بهالرقم. استخدم رقم من القائمة.';
 
@@ -323,24 +369,27 @@ Deno.serve(async (req) => {
   const { count } = await db.from('ghaith_messages').select('id', { count: 'exact', head: true }).eq('role', 'user').gte('created_at', dayStart.toISOString());
   if ((count ?? 0) >= DAILY_LIMIT) return fail(429, 'DAILY_LIMIT', 'وصلت الحد اليومي للرسائل، بنكمل بكرة.');
 
-  const [{ data: open }, { data: history }, { data: settings }] = await Promise.all([
-    db.from('ghaith_tasks').select(FIELDS).eq('status', 'open').order('due_at', { ascending: true, nullsFirst: false }).limit(120),
-    db.from('ghaith_messages').select('role,content').order('id', { ascending: false }).limit(10),
+  const [{ data: open }, { data: history }, { data: settings }, { data: notes }] = await Promise.all([
+    db.from('ghaith_tasks').select(FIELDS).eq('status', 'open').order('created_at', { ascending: true }).limit(150),
+    db.from('ghaith_messages').select('role,content,actions').order('id', { ascending: false }).limit(12),
     db.from('ghaith_settings').select('follow_up_days').maybeSingle(),
+    db.from('ghaith_notes').select('id,fact').order('created_at').limit(80),
   ]);
   const { data: profile } = await db.from('profiles').select('display_name').eq('id', user.id).maybeSingle();
 
   // Earlier turns, oldest first, alternating and starting with the user
   const past: Msg[] = [];
-  for (const m of (history ?? []).reverse() as { role: 'user' | 'assistant'; content: string }[]) {
+  for (const m of (history ?? []).reverse() as { role: 'user' | 'assistant'; content: string; actions?: Action[] }[]) {
     if (!past.length && m.role !== 'user') continue;
+    const did = m.role === 'assistant' && m.actions?.length ? `\n(اللي عملته: ${m.actions.map((a) => `${a.type} [${a.id.slice(0, 8)}] ${a.title}`).join('؛ ')})` : '';
+    const content = m.content + did;
     const last = past[past.length - 1];
-    if (last && last.role === m.role) last.content = `${last.content}\n${m.content}`;
-    else past.push({ role: m.role, content: m.content });
+    if (last && last.role === m.role) last.content = `${last.content}\n${content}`;
+    else past.push({ role: m.role, content });
   }
   if (past.length && past[past.length - 1].role === 'user') past.pop();
 
-  const system = systemPrompt(now, (open ?? []) as Task[], settings?.follow_up_days ?? 3, (profile as { display_name?: string } | null)?.display_name ?? null);
+  const system = systemPrompt(now, (open ?? []) as Task[], settings?.follow_up_days ?? 3, (profile as { display_name?: string } | null)?.display_name ?? null, (notes ?? []) as { id: string; fact: string }[]);
   const messages: Msg[] = [...past, { role: 'user', content: text }];
   const actions: Action[] = [];
   let answer = '';
