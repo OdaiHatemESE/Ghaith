@@ -8,6 +8,7 @@ import { D, getLang, tx } from '../lib/i18n';
 import { Draft, Fields, Proposal, Source } from '../lib/store';
 import { CATS, KINDS, shortWhen } from '../lib/tasks';
 import { useTick } from '../lib/useTick';
+import { useWide } from '../lib/useWide';
 import { C, liftMd, R, tint, TS } from '../theme';
 import { Card, Check, ErrorText, Field, GhostButton, Icon, IconButton, IconName, Num, PrimaryButton, T } from '../ui';
 import { Mark } from './Logo';
@@ -53,6 +54,12 @@ function Glow() {
   );
 }
 
+/** Keeps a full-screen view readable on a desktop: a centred column */
+function Frame({ children }: { children: React.ReactNode }) {
+  const wide = useWide();
+  return <View style={{ flex: 1, width: '100%', maxWidth: wide ? 720 : undefined, alignSelf: 'center' }}>{children}</View>;
+}
+
 function useBack(onBack: () => void) {
   React.useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => (onBack(), true));
@@ -78,6 +85,7 @@ export function RecordView({ text, level, error, startedAt, onDone, onCancel }: 
     <Modal visible animationType="slide" onRequestClose={onCancel} statusBarTranslucent>
       <View style={{ flex: 1, backgroundColor: C.bg }}>
         <Glow />
+        <Frame>
         <View style={{ paddingTop: insets.top + 12, paddingHorizontal: 16, flexDirection: D.row }}>
           <IconButton icon="close" label={tx('إلغاء', 'Cancel')} onPress={onCancel} />
         </View>
@@ -136,6 +144,7 @@ export function RecordView({ text, level, error, startedAt, onDone, onCancel }: 
             <GhostButton label={tx('إلغاء', 'Cancel')} onPress={onCancel} />
           </View>
         </View>
+        </Frame>
       </View>
     </Modal>
   );
@@ -296,6 +305,7 @@ export function ReviewView({ said, source, proposals, onSave, onClose, onRetry }
   return (
     <Modal visible animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <View style={{ flex: 1, backgroundColor: C.bg }}>
+        <Frame>
         <ScrollView contentContainerStyle={{ paddingTop: insets.top + 12, paddingHorizontal: 16, paddingBottom: 130 }}>
           <View style={{ flexDirection: D.row, alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={{ flexDirection: D.row, alignItems: 'center', gap: 6, backgroundColor: tint(C.glow, 0.1), paddingHorizontal: 10, paddingVertical: 3, borderRadius: R.pill }}>
@@ -357,6 +367,7 @@ export function ReviewView({ said, source, proposals, onSave, onClose, onRetry }
           </Pressable>
         </View>
 
+        </Frame>
         {edit && <TaskSheet task={null} draft={editing ? result(editing.p) : null} onDraft={onDraft} onClose={() => setEdit(null)} />}
       </View>
     </Modal>

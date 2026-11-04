@@ -5,6 +5,7 @@ import { C, TS } from '../theme';
 import { Icon, T } from '../ui';
 import { useKeyboardReveal } from './KeyboardScroll';
 import { D } from '../lib/i18n';
+import { useWide } from '../lib/useWide';
 
 export function Sheet({
   visible,
@@ -21,6 +22,28 @@ export function Sheet({
 }) {
   const insets = useSafeAreaInsets();
   const reveal = useKeyboardReveal(visible);
+  const wide = useWide();
+
+  // On a desktop screen the sheet is a panel on the reading-end side, full height
+  if (wide) {
+    return (
+      <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+        <Pressable onPress={onClose} style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(27,31,107,0.22)' }} />
+        <View style={{ position: 'absolute', top: 0, bottom: 0, [D.end]: 0, width: 480, backgroundColor: C.bg, shadowColor: C.indigo, shadowOpacity: 0.18, shadowRadius: 40, shadowOffset: { width: 0, height: 0 } }}>
+          <View style={{ flexDirection: D.row, alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 24, paddingBottom: 10 }}>
+            <T w="bold" size={TS.h1}>{title}</T>
+            <Pressable onPress={onClose} hitSlop={12} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="close" size={18} color={C.sub} />
+            </Pressable>
+          </View>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 12 }}>
+            {children}
+          </ScrollView>
+          {footer && <View style={{ paddingHorizontal: 24, paddingTop: 10, paddingBottom: 24 }}>{footer}</View>}
+        </View>
+      </Modal>
+    );
+  }
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>

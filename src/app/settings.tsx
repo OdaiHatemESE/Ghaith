@@ -8,6 +8,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { notificationPermission, PermissionState } from '../lib/reminders';
 import { getLang, setLang, tx } from '../lib/i18n';
 import { useStore } from '../lib/store';
+import { useWide } from '../lib/useWide';
 import { atTime, clock } from '../lib/tasks';
 import { C, TS } from '../theme';
 import { Card, Chip, HScroll, ListRow, Segmented, T } from '../ui';
@@ -30,6 +31,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 export default function Settings() {
   const insets = useSafeAreaInsets();
   const { settings, saveSettings, signOut, name } = useStore();
+  const wide = useWide();
   const [perm, setPerm] = useState<PermissionState>('undetermined');
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export default function Settings() {
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <ScreenHeader title={tx('الإعدادات', 'Settings')} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 40 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 40, width: '100%', maxWidth: wide ? 912 : undefined, alignSelf: 'center' }}>
         <Section title={tx('اللغة', 'Language')} hint={tx('لغة التطبيق ولغة المهام التي يكتبها غيث', 'The app language, and the language Ghaith writes tasks in')}>
           <Segmented value={getLang()} onChange={setLang} options={[['ar', 'العربية'], ['en', 'English']]} />
         </Section>

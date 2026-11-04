@@ -10,6 +10,8 @@ import { AutoUpdate } from '../components/AutoUpdate';
 import { Mark } from '../components/Logo';
 import { clearReminders, notificationPermission, onReminderTap, ReminderTap, syncReminders } from '../lib/reminders';
 import { StoreProvider, useStore } from '../lib/store';
+import { useWide } from '../lib/useWide';
+import { Sidebar } from '../components/Sidebar';
 import { D, loadLang, useLang } from '../lib/i18n';
 import { addDays, atTime, startOfDay } from '../lib/tasks';
 import { C } from '../theme';
@@ -71,6 +73,7 @@ function Reminders() {
 
 function Gate() {
   const { status } = useStore();
+  const wide = useWide();
   if (status === 'loading') {
     return (
       <View style={{ flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', gap: 18 }}>
@@ -81,9 +84,11 @@ function Gate() {
   }
   const signedIn = status === 'in';
   return (
-    <>
+    <View style={{ flex: 1, flexDirection: D.row }}>
       {signedIn && <Reminders />}
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg }, animation: D.rtl ? 'slide_from_left' : 'slide_from_right' }}>
+      {signedIn && wide && <Sidebar />}
+      <View style={{ flex: 1 }}>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg }, animation: wide ? 'none' : D.rtl ? 'slide_from_left' : 'slide_from_right' }}>
         <Stack.Protected guard={signedIn}>
           <Stack.Screen name="index" />
           <Stack.Screen name="tasks" />
@@ -93,7 +98,8 @@ function Gate() {
           <Stack.Screen name="login" options={{ animation: 'fade' }} />
         </Stack.Protected>
       </Stack>
-    </>
+      </View>
+    </View>
   );
 }
 
@@ -111,12 +117,13 @@ export default function RootLayout() {
   }, []);
   // A new language remounts the screens so every layout and label picks it up
   const lang = useLang();
+  const wide = useWide();
   if (!fontsLoaded || !langReady) return <View style={{ flex: 1, backgroundColor: C.bg }} />;
   return (
     <SafeAreaProvider>
       <StoreProvider>
         <StatusBar style="dark" />
-        <View style={Platform.OS === 'web' ? { flex: 1, width: '100%', maxWidth: 520, alignSelf: 'center', backgroundColor: C.bg } : { flex: 1, backgroundColor: C.bg }}>
+        <View style={Platform.OS === 'web' && !wide ? { flex: 1, width: '100%', maxWidth: 520, alignSelf: 'center', backgroundColor: C.bg } : { flex: 1, backgroundColor: C.bg }}>
           <React.Fragment key={lang}>
             <Gate />
             <AutoUpdate />

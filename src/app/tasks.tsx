@@ -11,6 +11,7 @@ import { useNow } from '../lib/useNow';
 import { C, TS } from '../theme';
 import { Card, Chip, HScroll, IconButton, Segmented, T } from '../ui';
 import { D, tx } from '../lib/i18n';
+import { useWide } from '../lib/useWide';
 
 
 /** Every task: open ones by when they're due, done ones by the day they were finished */
@@ -20,7 +21,15 @@ export default function Tasks() {
   const { tasks, complete, reopen, refresh } = useStore();
   const now = useNow();
   const [view, setView] = useState<'open' | 'done'>('open');
-  const [kind, setKind] = useState<Kind | null>(() => (kindParam && kindParam in KINDS ? kindParam : null));
+  const paramKind = kindParam && kindParam in KINDS ? kindParam : null;
+  const [kind, setKind] = useState<Kind | null>(paramKind);
+  const wide = useWide();
+  // The sidebar links change ?kind= while this screen stays open: follow them
+  const [seenKind, setSeenKind] = useState(paramKind);
+  if (paramKind !== seenKind) {
+    setSeenKind(paramKind);
+    setKind(paramKind);
+  }
   const [sheet, setSheet] = useState<{ task: Task | null } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -64,7 +73,7 @@ export default function Tasks() {
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <ScreenHeader title={tx('المهام', 'Tasks')} right={<IconButton icon="plus" label={tx('إضافة مهمة', 'Add task')} onPress={() => setSheet({ task: null })} />} />
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 40 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 40, width: '100%', maxWidth: wide ? 912 : undefined, alignSelf: 'center' }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => (setRefreshing(true), await refresh(), setRefreshing(false))} tintColor={C.glow} />}
       >
         <Segmented value={view} onChange={setView} options={[['open', tx('مفتوحة', 'Open')], ['done', tx('منجزة', 'Done')]]} />
