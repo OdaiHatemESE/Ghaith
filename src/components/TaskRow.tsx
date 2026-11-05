@@ -16,7 +16,7 @@ function whenShort(iso: string, now: Date): { top: string; bottom?: string } {
  * One task as a row inside a grouped card (the قديش list layout): the check on the right, the title, one quiet
  * line of kind · category · person, and the time on the left.
  */
-export function TaskRow({ task, onToggle, onOpen, last, now = new Date() }: { task: Task; onToggle: () => void; onOpen: () => void; last?: boolean; now?: Date }) {
+export function TaskRow({ task, onToggle, onOpen, last, now = new Date(), note }: { task: Task; onToggle: () => void; onOpen: () => void; last?: boolean; now?: Date; note?: string }) {
   const done = task.status === 'done';
   const late = isLate(task, now);
   const when = task.due_at ?? task.remind_at;
@@ -27,7 +27,7 @@ export function TaskRow({ task, onToggle, onOpen, last, now = new Date() }: { ta
     onToggle();
   };
 
-  const sub = [task.kind !== 'todo' ? KINDS[task.kind].label : null, CATS[task.category].label, task.person].filter(Boolean).join(' · ');
+  const sub = note ? [task.person, note].filter(Boolean).join(' · ') : [task.kind !== 'todo' ? KINDS[task.kind].label : null, CATS[task.category].label, task.person].filter(Boolean).join(' · ');
 
   return (
     <Pressable

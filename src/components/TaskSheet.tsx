@@ -8,6 +8,7 @@ import { addDays, atTime, CAT_ORDER, Category, CATS, clock, dayLabel, Kind, KIND
 import { C, F, R, tint, TS } from '../theme';
 import { Card, Chip, ErrorText, Icon, IconName, PrimaryButton, T, Toggle } from '../ui';
 import { Sheet } from './Sheet';
+import { TaskHistory } from './TaskHistory';
 import { WhenPicker } from './WhenPicker';
 
 type Prop = 'kind' | 'remind' | 'due' | 'category' | 'person' | 'repeat' | 'notes';
@@ -240,6 +241,8 @@ export function TaskSheet({ task, draft, onDraft, onClose }: { task: Task | null
           />
         </Row>
       </Card>
+
+      {task && <TaskHistory taskId={task.id} />}
 
       <ErrorText text={err} />
       <View style={{ height: 12 }} />
