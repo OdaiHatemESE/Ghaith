@@ -1,58 +1,93 @@
 import * as Haptics from 'expo-haptics';
 import React from 'react';
 import { Platform, Pressable, View } from 'react-native';
-import { CATS, clock, dayDiff, dayLabel, isLate, KINDS, Task } from '../lib/tasks';
+import { D, getLang, tx } from '../lib/i18n';
+import { anchor, CATS, clock, dayDiff, dayLabel, isLate, KINDS, Task } from '../lib/tasks';
 import { C, TS } from '../theme';
-import { Check, Icon, T } from '../ui';
-import { D, tx } from '../lib/i18n';
+import { Check, Icon, IconName, T } from '../ui';
 
-/** When, short, for the end of a row: "10:30 ص" today, otherwise the day over the time */
-function whenShort(iso: string, now: Date): { top: string; bottom?: string } {
-  const d = new Date(iso);
-  return dayDiff(d, now) === 0 ? { top: clock(d) } : { top: dayLabel(d, now).split(' ').slice(0, 2).join(' '), bottom: clock(d) };
-}
+type When = { text: string; tone: 'late' | 'missed' | 'soon' | 'normal'; icon: IconName };
 
 /**
- * One task as a row inside a grouped card (the قديش list layout): the check on the right, the title, one quiet
- * line of kind · category · person, and the time on the left.
+ * The time of a task, said the way you'd say it:
+ * past → "قبل يومين" / "أمس 9:00 ص" / "9:00 ص" (red when the deadline passed, amber when only the reminder did),
+ * future → "9:00 ص" today, "غداً 9:00 ص", "الثلاثاء 9:00 ص", "الخميس 31 ديسمبر 5:00 م".
+ */
+function whenOf(t: Task, now: Date): When | null {
+  const a = anchor(t);
+  if (!a) return null;
+  const d = new Date(a);
+  const diff = dayDiff(d, now);
+  if (d < now) {
+    const tone = isLate(t, now) ? 'late' : 'missed';
+    const icon: IconName = tone === 'late' ? 'alert-circle-outline' : 'bell-alert-outline';
+    if (diff === 0) return { text: clock(d), tone, icon };
+    if (diff === -1) return { text: `${tx('أمس', 'Yesterday')} ${clock(d)}`, tone, icon };
+    const n = -diff;
+    const ago = getLang() === 'en' ? `${n} days ago` : n === 2 ? 'قبل يومين' : n <= 10 ? `قبل ${n} أيام` : `قبل ${n} يوماً`;
+    return { text: ago, tone, icon };
+  }
+  const soon = d.getTime() - now.getTime() < 2 * 3600000;
+  return { text: diff === 0 ? clock(d) : `${dayLabel(d, now)} ${clock(d)}`, tone: soon ? 'soon' : 'normal', icon: t.due_at ? 'calendar-blank-outline' : 'bell-outline' };
+}
+
+const TONE = { late: C.late, missed: C.amberText, soon: C.glow, normal: C.sub };
+
+/**
+ * One task as a row inside a grouped card: the check, the title (up to two lines), then one quiet line that starts
+ * with when it is, followed by kind · category · person.
  */
 export function TaskRow({ task, onToggle, onOpen, last, now = new Date(), note }: { task: Task; onToggle: () => void; onOpen: () => void; last?: boolean; now?: Date; note?: string }) {
   const done = task.status === 'done';
-  const late = isLate(task, now);
-  const when = task.due_at ?? task.remind_at;
-  const w = when && !done ? whenShort(when, now) : null;
+  const w = done ? null : whenOf(task, now);
 
   const toggle = () => {
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     onToggle();
   };
 
-  const sub = note ? [task.person, note].filter(Boolean).join(' · ') : [task.kind !== 'todo' ? KINDS[task.kind].label : null, CATS[task.category].label, task.person].filter(Boolean).join(' · ');
+  const rest = (note ? [task.person, note] : [task.kind !== 'todo' ? KINDS[task.kind].label : null, CATS[task.category].label, task.person]).filter(Boolean).join(' · ');
 
   return (
     <Pressable
       onPress={onOpen}
       accessibilityLabel={task.title}
-      style={({ pressed }) => ({ flexDirection: D.row, alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, backgroundColor: pressed ? C.bg : 'transparent' })}
+      style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({
+        flexDirection: D.row,
+        alignItems: 'flex-start',
+        gap: 12,
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        backgroundColor: pressed || hovered ? C.bg : 'transparent',
+      })}
     >
-      <Check on={done} onPress={toggle} size={24} label={done ? tx('إعادة فتحها', 'Reopen') : tx('أُنجزت', 'Done')} />
-      <View style={{ flex: 1, [D.rtl ? 'marginRight' : 'marginLeft']: 12, [D.rtl ? 'marginLeft' : 'marginRight']: 8 }}>
-        <View style={{ flexDirection: D.row, alignItems: 'center', gap: 6 }}>
-          <T w="medium" numberOfLines={1} color={done ? C.faint : C.text} style={[{ flexShrink: 1 }, done ? { textDecorationLine: 'line-through' } : null]}>
-            {task.title}
-          </T>
-          {!done && task.priority === 'high' && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: C.late }} />}
-          {!done && !!task.repeat && <Icon name="repeat" size={14} color={C.faint} />}
-        </View>
-        {!done && <T size={TS.small} color={C.sub} numberOfLines={1}>{sub}</T>}
+      <View style={{ paddingTop: 1 }}>
+        <Check on={done} onPress={toggle} size={22} label={done ? tx('إعادة فتحها', 'Reopen') : tx('أُنجزت', 'Done')} />
       </View>
-      {w && (
-        <View style={{ alignItems: D.rtl ? 'flex-start' : 'flex-end' }}>
-          <T w="medium" size={TS.small} color={late ? C.late : C.text} align="end">{w.top}</T>
-          {!!w.bottom && <T size={TS.tiny} color={late ? C.late : C.sub} align="end">{w.bottom}</T>}
+      <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+        <T w="medium" size={14.5} numberOfLines={2} color={done ? C.faint : C.text} style={[{ lineHeight: 22 }, done ? { textDecorationLine: 'line-through' } : null]}>
+          {task.title}
+        </T>
+        {!done && (
+          <View style={{ flexDirection: D.row, alignItems: 'center', gap: 6 }}>
+            {w && (
+              <View style={{ flexDirection: D.row, alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                <Icon name={w.icon} size={13} color={TONE[w.tone]} />
+                <T size={TS.small} w={w.tone === 'normal' ? 'regular' : 'medium'} color={TONE[w.tone]} numberOfLines={1}>{w.text}</T>
+              </View>
+            )}
+            {w && !!rest && <View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: C.faint }} />}
+            {!!rest && <T size={TS.small} color={C.sub} numberOfLines={1} style={{ flexShrink: 1 }}>{rest}</T>}
+            {!!task.repeat && <Icon name="repeat" size={13} color={C.faint} />}
+          </View>
+        )}
+      </View>
+      {!done && task.priority === 'high' && (
+        <View style={{ paddingTop: 3 }} accessibilityLabel={tx('عاجلة', 'Urgent')}>
+          <Icon name="flag" size={15} color={C.late} />
         </View>
       )}
-      {!last && <View style={{ position: 'absolute', bottom: 0, [D.end]: 16, [D.start]: 52, height: 1, backgroundColor: C.line }} />}
+      {!last && <View style={{ position: 'absolute', bottom: 0, [D.end]: 16, [D.start]: 50, height: 1, backgroundColor: C.line }} />}
     </Pressable>
   );
 }
