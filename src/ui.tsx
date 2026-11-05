@@ -7,7 +7,7 @@ import { D, tx } from './lib/i18n';
 
 type Weight = 'regular' | 'medium' | 'semibold' | 'bold';
 
-/** Arabic text: IBM Plex Sans Arabic (as in قديش), right aligned, RTL bidi */
+/** Text in Almarai, aligned to the reading direction */
 export function T({
   w = 'regular',
   size = TS.body,

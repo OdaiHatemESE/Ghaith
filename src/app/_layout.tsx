@@ -1,4 +1,4 @@
-import { IBMPlexSansArabic_400Regular, IBMPlexSansArabic_500Medium, IBMPlexSansArabic_600SemiBold, IBMPlexSansArabic_700Bold } from '@expo-google-fonts/ibm-plex-sans-arabic';
+import { Almarai_400Regular, Almarai_700Bold, Almarai_800ExtraBold } from '@expo-google-fonts/almarai';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
 import { router, Stack } from 'expo-router';
@@ -105,10 +105,9 @@ function Gate() {
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
-    Plex400: IBMPlexSansArabic_400Regular,
-    Plex500: IBMPlexSansArabic_500Medium,
-    Plex600: IBMPlexSansArabic_600SemiBold,
-    Plex700: IBMPlexSansArabic_700Bold,
+    Almarai400: Almarai_400Regular,
+    Almarai700: Almarai_700Bold,
+    Almarai800: Almarai_800ExtraBold,
     ...MaterialCommunityIcons.font,
   });
   const [langReady, setLangReady] = useState(false);

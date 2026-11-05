@@ -1,5 +1,5 @@
 // غيث brand identity: Deep Indigo, Electric Teal and a violet glow on a cool off-white canvas.
-// Layout, type and spacing follow قديش: grouped white cards (radius 20) with divided rows, 16px gutters.
+// Layout and spacing follow قديش: grouped white cards (radius 20) with divided rows, 16px gutters.
 export const C = {
   // brand
   indigo: '#1B1F6B',
@@ -31,13 +31,14 @@ export const C = {
 /** Soft tint of a colour for chips and icon tiles */
 export const tint = (hex: string, a = 0.12) => hex + Math.round(a * 255).toString(16).padStart(2, '0');
 
-// Same type as قديش: IBM Plex Sans Arabic, ≈1.25 scale, 1.5 line height
+// Almarai (Arabic and Latin), ≈1.25 scale, 1.5 line height. Almarai comes in 300/400/700/800, so the
+// in-between weights map to the nearest one.
 export const F = {
-  regular: 'Plex400',
-  medium: 'Plex500',
-  semibold: 'Plex600',
-  bold: 'Plex700',
-  num: 'Plex600',
+  regular: 'Almarai400',
+  medium: 'Almarai700',
+  semibold: 'Almarai700',
+  bold: 'Almarai800',
+  num: 'Almarai700',
 };
 
 export const TS = {
