@@ -1,5 +1,5 @@
 // Speech for غيث's replies (Arabic or English).
-// 1) Gemini TTS (GEMINI_API_KEY, already used by قديش): the most natural voice, told to speak with a light Emirati
+// 1) Gemini TTS (GHAITH_GEMINI_API_KEY, or GEMINI_API_KEY shared with قديش): the most natural voice, told to speak with a light Emirati
 //    accent. Slower (it makes the whole clip first); needs billing on the key's Google project to avoid free limits.
 // 2) Azure neural voices (AZURE_SPEECH_KEY + AZURE_SPEECH_REGION): Hamdan and Fatima, fast; used when Gemini fails.
 // The secret GHAITH_TTS_PROVIDER=azure puts Azure first instead.
@@ -15,7 +15,10 @@ const AZURE_VOICES: Record<string, { ar: string; en: string }> = {
   fatima: { ar: 'ar-AE-FatimaNeural', en: 'en-US-JennyNeural' },
 };
 
-export const ttsConfigured = () => !!(Deno.env.get('GEMINI_API_KEY') || (Deno.env.get('AZURE_SPEECH_KEY') && Deno.env.get('AZURE_SPEECH_REGION')));
+// غيث's own Gemini key (a billed project) if set; otherwise the key shared with قديش
+const geminiKey = () => Deno.env.get('GHAITH_GEMINI_API_KEY') || Deno.env.get('GEMINI_API_KEY');
+
+export const ttsConfigured = () => !!(geminiKey() || (Deno.env.get('AZURE_SPEECH_KEY') && Deno.env.get('AZURE_SPEECH_REGION')));
 
 const toBase64 = (bytes: Uint8Array) => {
   let bin = '';
@@ -46,7 +49,7 @@ function wav(pcm: Uint8Array, rate = 24000): Uint8Array {
 }
 
 async function gemini(text: string, voice: string): Promise<Speech | null> {
-  const key = Deno.env.get('GEMINI_API_KEY');
+  const key = geminiKey();
   if (!key) return null;
   const arabic = /[\u0600-\u06FF]/.test(text);
   const prompt =
