@@ -8,8 +8,8 @@ import { getLang, tx } from './i18n';
 import { Task, TASK_FIELDS } from './tasks';
 
 export type Voice = 'hamdan' | 'fatima' | 'device';
-export type Settings = { morning_time: string | null; evening_time: string | null; speak_replies: boolean; follow_up_days: number; voice: Voice; keep_listening: boolean };
-export const DEFAULT_SETTINGS: Settings = { morning_time: '08:00', evening_time: '20:00', speak_replies: true, follow_up_days: 3, voice: 'hamdan', keep_listening: true };
+export type Settings = { morning_time: string | null; evening_time: string | null; speak_replies: boolean; follow_up_days: number; voice: Voice; keep_listening: boolean; lang: 'ar' | 'en' };
+export const DEFAULT_SETTINGS: Settings = { morning_time: '08:00', evening_time: '20:00', speak_replies: true, follow_up_days: 3, voice: 'hamdan', keep_listening: true, lang: 'ar' };
 export type Source = 'voice' | 'text' | 'email';
 export type Fields = Pick<Task, 'title' | 'kind' | 'category' | 'priority' | 'person' | 'due_at' | 'remind_at' | 'repeat' | 'notes'>;
 /** A task being edited before it is saved (a new one from a capture, or an edit غيث proposed) */
@@ -89,7 +89,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     // The state updates happen after the network calls resolve, not synchronously in this effect
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadTasks().then(() => setLoaded(true));
-    supabase.from('ghaith_settings').select('morning_time,evening_time,speak_replies,follow_up_days,voice,keep_listening').maybeSingle().then(({ data }) => {
+    supabase.from('ghaith_settings').select('morning_time,evening_time,speak_replies,follow_up_days,voice,keep_listening,lang').maybeSingle().then(({ data }) => {
+      // The server writes Radar findings and advice in this language: keep it in step with the app
+      if (!data || data.lang !== getLang()) supabase.from('ghaith_settings').upsert({ user_id: userId, lang: getLang(), updated_at: new Date().toISOString() }).then(() => {});
       if (data) setSettings({ ...DEFAULT_SETTINGS, ...data, morning_time: data.morning_time?.slice(0, 5) ?? null, evening_time: data.evening_time?.slice(0, 5) ?? null });
     });
     supabase.from('profiles').select('display_name,username').eq('id', userId).maybeSingle().then(({ data }) => {

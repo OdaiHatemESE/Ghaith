@@ -14,6 +14,7 @@ import { useNow } from '../lib/useNow';
 import { useDictation } from '../lib/voice';
 import { useWide } from '../lib/useWide';
 import { C, F, GRADIENT, lift, R, tint, TS } from '../theme';
+import { RadarSummary, useRadarItems } from '../components/Radar';
 import { Card, Gradient, Icon, IconButton, IconName, Num, PrimaryButton, SectionHead, T } from '../ui';
 
 type Flow =
@@ -41,6 +42,7 @@ export default function Home() {
   const now = useNow();
   const dict = useDictation();
   const wide = useWide();
+  const radarUnread = useRadarItems().unread;
   const [flow, setFlow] = useState<Flow>({ step: 'idle' });
   const [captureErr, setCaptureErr] = useState('');
   const [toast, setToast] = useState('');
@@ -355,6 +357,7 @@ export default function Home() {
               {hero}
               {stats}
             </View>
+            <RadarSummary style={{ marginTop: 16 }} />
             {reminder}
 
             {/* Board: what is on me today · what I'm waiting for from others · what's coming */}
@@ -411,6 +414,10 @@ export default function Home() {
         <View style={{ flexDirection: D.row, alignItems: 'center', justifyContent: 'space-between' }}>
           <Logo size={32} />
           <View style={{ flexDirection: D.row, gap: 8 }}>
+            <View>
+              <IconButton icon="radar" label={tx('رادار غيث', 'Ghaith Radar')} onPress={() => router.push('/radar')} />
+              {radarUnread > 0 && <View pointerEvents="none" style={{ position: 'absolute', top: 6, [D.end]: 6, width: 10, height: 10, borderRadius: 5, backgroundColor: C.late, borderWidth: 2, borderColor: C.bg }} />}
+            </View>
             <IconButton icon="message-text-outline" label={tx('محادثة غيث', 'Chat with Ghaith')} onPress={() => router.push('/chat')} />
             <IconButton icon="format-list-checks" label={tx('كل المهام', 'All tasks')} onPress={() => router.push('/tasks')} />
             <IconButton icon="tune-variant" label={tx('الإعدادات', 'Settings')} onPress={() => router.push('/settings')} />
@@ -419,6 +426,7 @@ export default function Home() {
         <View style={{ marginTop: 16 }}>{greetingBlock}</View>
         {hero}
         {stats}
+        <RadarSummary />
         {reminder}
         {errorBox}
         {groupList}

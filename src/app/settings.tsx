@@ -52,7 +52,7 @@ export default function Settings() {
       <ScreenHeader title={tx('الإعدادات', 'Settings')} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 40, width: '100%', maxWidth: wide ? 912 : undefined, alignSelf: 'center' }}>
         <Section title={tx('اللغة', 'Language')} hint={tx('لغة التطبيق ولغة المهام التي يكتبها غيث', 'The app language, and the language Ghaith writes tasks in')}>
-          <Segmented value={getLang()} onChange={setLang} options={[['ar', 'العربية'], ['en', 'English']]} />
+          <Segmented value={getLang()} onChange={(v) => (saveSettings({ lang: v as 'ar' | 'en' }), setLang(v))} options={[['ar', 'العربية'], ['en', 'English']]} />
         </Section>
 
         <Section title={tx('ملخص الصباح', 'Morning summary')} hint={tx('مهام اليوم، والمتأخر، ومن تنتظر ردّهم', 'Today’s tasks, what is overdue, and who you are waiting on')}>

@@ -30,3 +30,14 @@ npm install
 npx expo start
 npx tsc --noEmit && npx expo lint
 ```
+
+## Ghaith Radar (proactive monitoring)
+
+Every 15 minutes `pg_cron` calls the `ghaith-radar` Edge Function (key kept in Vault, see migrations 0005–0006). It applies
+deterministic rules (`supabase/functions/_shared/radar.ts`) to every open task: overdue, due soon, a reply I owe,
+waiting on someone past the follow-up date, and stale. Findings are saved in `ghaith_nudges` with a score, severity,
+reason and next step (AI-written for new medium/high findings, a fixed text otherwise) and shown in the app's Radar
+screen. Nothing is completed, postponed, sent or deleted automatically. Each scan is logged in `ghaith_radar_runs`.
+
+- Tests: `npm test`
+- Pause the schedule: `select cron.unschedule('ghaith-radar');`

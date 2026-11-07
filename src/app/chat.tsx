@@ -1,5 +1,6 @@
 // Chat with غيث: ask about your tasks or tell it what to do, in your own words. It answers and acts right away.
 import React, { useEffect, useRef, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Mark } from '../components/Logo';
@@ -99,7 +100,9 @@ export default function Chat() {
   const dict = useDictation();
   const [since, setSince] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [text, setText] = useState('');
+  // "Ask Ghaith" from the Radar arrives as ?ask=…: it is put in the box, the user sends it
+  const { ask } = useLocalSearchParams<{ ask?: string }>();
+  const [text, setText] = useState(typeof ask === 'string' ? ask : '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [open, setOpen] = useState<string | null>(null);
