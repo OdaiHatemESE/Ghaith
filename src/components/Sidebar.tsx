@@ -11,6 +11,7 @@ import { C, R, tint, TS } from '../theme';
 import { Icon, IconName, T } from '../ui';
 import { versionLabel } from './AutoUpdate';
 import { Logo } from './Logo';
+import { useInboxCount } from './Inbox';
 import { useRadarItems } from './Radar';
 
 function Item({ icon, label, active, count, countColor, onPress }: { icon: IconName; label: string; active: boolean; count?: number; countColor?: string; onPress: () => void }) {
@@ -51,6 +52,7 @@ export function Sidebar() {
   const replies = open.filter((t) => t.kind === 'reply').length;
   const onTasks = path.endsWith('/tasks');
   const radar = useRadarItems();
+  const emails = useInboxCount();
 
   return (
     <View style={{ width: 260, backgroundColor: C.surface, [D.rtl ? 'borderLeftWidth' : 'borderRightWidth']: 1, borderColor: C.line, paddingHorizontal: 14, paddingTop: 24, paddingBottom: 18 }}>
@@ -68,6 +70,7 @@ export function Sidebar() {
 
       <View style={{ height: 1, backgroundColor: C.line, marginVertical: 16, marginHorizontal: 8 }} />
       <Item icon="radar" label={tx('رادار غيث', 'Ghaith Radar')} active={path.endsWith('/radar')} count={radar.unread || radar.list.length} countColor={radar.unread ? C.late : C.sub} onPress={() => router.navigate('/radar')} />
+      <Item icon="email-fast-outline" label={tx('بريد غيث', 'Email to Ghaith')} active={path.endsWith('/inbox')} count={emails} countColor={C.tealDeep} onPress={() => router.navigate('/inbox')} />
       <Item icon="message-text-outline" label={tx('محادثة غيث', 'Chat with Ghaith')} active={path.endsWith('/chat')} onPress={() => router.navigate('/chat')} />
 
       <View style={{ height: 1, backgroundColor: C.line, marginVertical: 16, marginHorizontal: 8 }} />

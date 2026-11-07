@@ -1,3 +1,14 @@
+
+## Email to Ghaith
+
+People send or forward email (from Outlook or any mail app) to Ghaith's address. The provider (Postmark inbound)
+posts each message to the `ghaith-inbox` Edge Function at `…/functions/v1/ghaith-inbox?key=<ghaith_inbox_key>`; the
+key is made by the database and kept in Vault (migration 0010). Ghaith accepts mail only from addresses a person has
+linked in Settings and confirmed by sending the code the server gave them (`ghaith_senders`, migration 0008); mail
+from anyone else is dropped without being stored. Each email is read by the same capture engine as the app
+(`_shared/capture.ts`), and the proposals wait in `ghaith_inbox` until the person approves them in the Inbox screen.
+
+- Ghaith's address shown in the app: `create or replace function public.ghaith_inbox_address() returns text language sql stable set search_path = '' as $$ select '<address>'::text $$;`
 # غيث (Ghaith)
 
 مساعد مهام وتذكير بالذكاء الاصطناعي، أغلبه للشغل. بتسجّله كل اللي عليك مرة وحدة بصوتك (أو بتكتبه، أو بتلصق إيميل)، وهو بيقسّمه لقائمة مهام بتراجعها وبتحفظها. بعدها بيذكّرك فيها وبيتابع معك الناس اللي ناطر ردهم والرسائل اللي لسا ما رديت عليها.

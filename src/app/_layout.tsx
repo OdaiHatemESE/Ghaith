@@ -8,6 +8,7 @@ import { ActivityIndicator, I18nManager, Platform, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AutoUpdate } from '../components/AutoUpdate';
 import { Mark } from '../components/Logo';
+import { InboxSync } from '../components/Inbox';
 import { RadarSync } from '../components/Radar';
 import { clearReminders, notificationPermission, onReminderTap, ReminderTap, syncReminders } from '../lib/reminders';
 import { StoreProvider, useStore } from '../lib/store';
@@ -88,6 +89,7 @@ function Gate() {
     <View style={{ flex: 1, flexDirection: D.row }}>
       {signedIn && <Reminders />}
       {signedIn && <RadarSync />}
+      {signedIn && <InboxSync />}
       {signedIn && wide && <Sidebar />}
       <View style={{ flex: 1 }}>
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg }, animation: wide ? 'none' : D.rtl ? 'slide_from_left' : 'slide_from_right' }}>
@@ -96,6 +98,7 @@ function Gate() {
           <Stack.Screen name="tasks" />
           <Stack.Screen name="chat" />
           <Stack.Screen name="radar" />
+          <Stack.Screen name="inbox" />
           <Stack.Screen name="settings" />
         </Stack.Protected>
         <Stack.Protected guard={!signedIn}>

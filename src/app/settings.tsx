@@ -1,25 +1,31 @@
-// Settings, in four plain groups: general (language, voice), reminders on this phone, Ghaith Radar, and the account.
+// Settings, in five plain groups: general (language, voice), reminders on this phone, Ghaith Radar, email to Ghaith
+// (the addresses Ghaith accepts mail from), and the account.
 // Every choice saves at once; there is no "save" button.
 import Constants from 'expo-constants';
 import React, { useEffect, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { versionLabel } from '../components/AutoUpdate';
+import { countEmails } from '../components/Inbox';
 import { Mark } from '../components/Logo';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { D, getLang, setLang, tx } from '../lib/i18n';
+import { addSender, copy, removeSender, Sender, sendCode, useInbox } from '../lib/inbox';
 import { everyLabel } from '../lib/radar';
 import { notificationPermission, PermissionState } from '../lib/reminders';
 import { RadarEvery, useStore } from '../lib/store';
 import { atTime, clock } from '../lib/tasks';
 import { useWide } from '../lib/useWide';
 import { C, tint, TS } from '../theme';
-import { Card, Chip, Icon, IconName, ListRow, Segmented, T } from '../ui';
+import { Card, Chip, ErrorText, Field, GhostButton, Icon, IconName, ListRow, Segmented, T } from '../ui';
 
 const MORNING = ['07:00', '07:30', '08:00', '08:30', '09:00'];
 const EVENING = ['17:00', '18:00', '20:00', '21:00', '22:00'];
 const FOLLOW = [1, 2, 3, 5, 7];
 const RADAR: RadarEvery[] = [2, 4, 8, 12, 24];
+/** Long addresses wrap anywhere instead of running out of their box (the web keeps unbroken words whole) */
+const BREAK = Platform.OS === 'web' ? ({ wordBreak: 'break-all' } as object) : null;
 const hm = (v: string) => clock(atTime(new Date(), Number(v.slice(0, 2)), Number(v.slice(3, 5))));
 const days = (d: number) => (getLang() === 'en' ? `${d} ${d === 1 ? 'day' : 'days'}` : d === 1 ? 'يوم واحد' : d === 2 ? 'يومان' : `${d} أيام`);
 
@@ -56,6 +62,88 @@ function Row({ icon, title, hint, children, last }: { icon: IconName; title: str
       </View>
       {children}
     </View>
+  );
+}
+
+/** One linked address: verified, or waiting for the email carrying its code */
+function SenderRow({ s, address, last }: { s: Sender; address: string | null; last: boolean }) {
+  const ok = !!s.verified_at;
+  return (
+    <View style={{ paddingVertical: 12, gap: 8, borderBottomWidth: last ? 0 : 1, borderBottomColor: C.line }}>
+      <View style={{ flexDirection: D.row, alignItems: 'center', gap: 10 }}>
+        <Icon name={ok ? 'check-decagram' : 'clock-outline'} size={20} color={ok ? C.tealDeep : C.amberText} />
+        <View style={{ flex: 1 }}>
+          <T w="medium" numberOfLines={1} style={{ writingDirection: 'ltr', textAlign: D.rtl ? 'right' : 'left' }}>{s.email}</T>
+          <T size={TS.tiny} color={ok ? C.tealDeep : C.amberText}>{ok ? tx('مرتبط', 'Linked') : tx('بانتظار التأكيد', 'Waiting for confirmation')}</T>
+        </View>
+        <Pressable onPress={() => removeSender(s.id)} hitSlop={10} accessibilityLabel={tx('إزالة العنوان', 'Remove address')}>
+          <Icon name="close" size={18} color={C.faint} />
+        </Pressable>
+      </View>
+      {!ok && (
+        <View style={{ backgroundColor: tint(C.amber, 0.08), borderRadius: 12, padding: 12, gap: 8 }}>
+          <T size={TS.small}>
+            {tx('للتأكيد: أرسل من هذا العنوان رسالة إلى غيث، وفي عنوانها الرمز ', 'To confirm: send an email from this address to Ghaith with this code in the subject: ')}
+            <T size={TS.small} w="bold" selectable color={C.indigo}>{s.code}</T>
+          </T>
+          {address ? (
+            <View style={{ flexDirection: D.row }}>
+              <GhostButton label={tx('أرسل الرمز الآن', 'Send the code now')} icon="send-outline" onPress={() => sendCode(address, s.code)} style={{ flexGrow: 0, flexShrink: 0, flexBasis: 'auto', paddingHorizontal: 18 }} />
+            </View>
+          ) : (
+            <T size={TS.tiny} color={C.sub}>{tx('يظهر عنوان غيث هنا حين يُفعَّل.', 'Ghaith’s address appears here once it is switched on.')}</T>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+/** The addresses Ghaith accepts email from, and Ghaith's own address */
+function EmailGroup() {
+  const { senders, address, items } = useInbox();
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [copied, setCopied] = useState(false);
+  const add = async () => {
+    if (!email.trim() || busy) return;
+    setBusy(true);
+    setErr('');
+    const e = await addSender(email);
+    setBusy(false);
+    if (e) setErr(e);
+    else setEmail('');
+  };
+  return (
+    <Group title={tx('البريد إلى غيث', 'Email to Ghaith')} note={tx('من Outlook أو أي بريد', 'From Outlook or any mail app')}>
+      <Row icon="email-fast-outline" title={tx('عنوان غيث', 'Ghaith’s address')} hint={tx('أرسل أو حوّل إليه أي بريد، ويقترح غيث منه المهام والمتابعات لتعتمدها', 'Send or forward any email to it; Ghaith proposes tasks and follow-ups for you to approve')}>
+        {address ? (
+          <Pressable
+            onPress={async () => (await copy(address)) && (setCopied(true), setTimeout(() => setCopied(false), 1800))}
+            style={{ flexDirection: D.row, alignItems: 'center', gap: 10, backgroundColor: C.bg, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 }}
+          >
+            <T selectable w="semibold" size={TS.small} color={C.indigo} style={[{ flex: 1, minWidth: 0, writingDirection: 'ltr', textAlign: D.rtl ? 'right' : 'left' }, BREAK]}>{address}</T>
+            <Icon name={copied ? 'check' : 'content-copy'} size={17} color={C.glow} />
+          </Pressable>
+        ) : (
+          <T size={TS.small} color={C.amberText}>{tx('لم يُفعَّل بعد. اربط عناوينك الآن، وتعمل حين يُفعَّل.', 'Not switched on yet. Link your addresses now; they work once it is.')}</T>
+        )}
+      </Row>
+      <Row icon="account-check-outline" title={tx('عناويني المرتبطة', 'My linked addresses')} hint={tx('يقبل غيث البريد من هذه العناوين فقط، وما يصل من غيرها يُهمَل', 'Ghaith accepts email from these addresses only; anything else is ignored')}>
+        {!!senders.length && <View>{senders.map((s, i) => <SenderRow key={s.id} s={s} address={address} last={i === senders.length - 1} />)}</View>}
+        {senders.length < 5 && (
+          <View style={{ flexDirection: D.row, alignItems: 'center', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <Field value={email} onChangeText={setEmail} placeholder="name@mohesr.gov.ae" ltr autoComplete="email" onSubmitEditing={add} returnKeyType="done" maxLength={254} />
+            </View>
+            <GhostButton label={busy ? '…' : tx('إضافة', 'Add')} icon="plus" onPress={add} style={{ flexGrow: 0, flexShrink: 0, flexBasis: 'auto', paddingHorizontal: 18 }} />
+          </View>
+        )}
+        <ErrorText text={err} />
+      </Row>
+      <ListRow icon="inbox-arrow-down-outline" title={tx('ما وصل غيث بالبريد', 'What arrived by email')} detail={items.length ? countEmails(items.length) : tx('لا شيء بانتظارك', 'Nothing waiting')} onPress={() => router.push('/inbox')} last />
+    </Group>
   );
 }
 
@@ -143,6 +231,8 @@ export default function Settings() {
             </Choices>
           </Row>
         </Group>
+
+        <EmailGroup />
 
         <Group title={tx('الحساب', 'Account')}>
           <ListRow icon="account-outline" title={name || tx('حسابي', 'My account')} detail={tx('الحساب نفسه في قديش', 'Same account as Qaddesh')} />

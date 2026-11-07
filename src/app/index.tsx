@@ -14,6 +14,7 @@ import { useNow } from '../lib/useNow';
 import { useDictation } from '../lib/voice';
 import { useWide } from '../lib/useWide';
 import { C, F, GRADIENT, lift, R, tint, TS } from '../theme';
+import { InboxSummary } from '../components/Inbox';
 import { RadarSummary, useRadarItems } from '../components/Radar';
 import { Card, Gradient, Icon, IconButton, IconName, Num, PrimaryButton, SectionHead, T } from '../ui';
 
@@ -358,6 +359,7 @@ export default function Home() {
               {stats}
             </View>
             <RadarSummary style={{ marginTop: 16 }} />
+            <InboxSummary style={{ marginTop: 16 }} />
             {reminder}
 
             {/* Board: what is on me today · what I'm waiting for from others · what's coming */}
@@ -427,6 +429,7 @@ export default function Home() {
         {hero}
         {stats}
         <RadarSummary />
+        <InboxSummary style={{ marginTop: 16 }} />
         {reminder}
         {errorBox}
         {groupList}
