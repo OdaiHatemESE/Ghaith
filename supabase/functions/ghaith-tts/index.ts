@@ -1,4 +1,4 @@
-// ghaith-tts: reads a short Arabic text in غيث's voice (used by "try the voice" in settings).
+// ghaith-tts: reads a reply in غيث's voice (the voice conversation in chat).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { speakArabic, ttsConfigured } from '../_shared/tts.ts';
 
@@ -21,6 +21,6 @@ Deno.serve(async (req) => {
   let body: { text?: string; voice?: string } = {};
   try { body = await req.json(); } catch { /* empty */ }
   if (!ttsConfigured()) return reply(200, { audio: null, configured: false });
-  const speech = await speakArabic(String(body.text ?? '').slice(0, 400), body.voice);
+  const speech = await speakArabic(String(body.text ?? '').slice(0, 1500), body.voice);
   return reply(200, { audio: speech?.audio ?? null, audio_type: speech?.type ?? null, configured: true });
 });

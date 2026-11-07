@@ -1,4 +1,5 @@
-// One-shot dictation: the person talks for as long as they like (several tasks in one go) and taps "done".
+// Dictation: either one long take (several tasks in one go, ends on "done"), or one sentence at a time for the voice
+// conversation (ends by itself on a pause).
 // Speech to text runs on the phone's speech service (or the browser's on web). No audio is recorded or stored;
 // only the final text is sent to غيث.
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
@@ -40,20 +41,22 @@ export function useDictation() {
   const wanted = useRef(false); // the person hasn't tapped "done" yet
   const restarts = useRef(0);
   const waiter = useRef<((t: string) => void) | null>(null);
+  const onUtterance = useRef<((t: string) => void) | null>(null); // single-utterance mode (voice conversation)
 
   const full = () => join(committed.current, interim.current);
 
-  const begin = useCallback(() => {
+  const begin = useCallback((continuous = true) => {
+    const silence = continuous ? 6000 : 1600;
     ExpoSpeechRecognitionModule.start({
       lang: getLang() === 'en' ? 'en-US' : 'ar-AE',
       interimResults: true,
-      continuous: true,
+      continuous,
       maxAlternatives: 1,
       contextualStrings: ['غيث', 'ذكرني', 'إيميل', 'المدير', 'اجتماع', 'تقرير'],
       volumeChangeEventOptions: { enabled: true, intervalMillis: 100 },
       androidIntentOptions: {
-        EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 6000,
-        EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 6000,
+        EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: silence,
+        EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: silence,
       },
       iosTaskHint: 'dictation',
     });
@@ -106,6 +109,9 @@ export function useDictation() {
     }
     setState(available() ? 'idle' : 'unsupported');
     setLevel(0);
+    const once = onUtterance.current;
+    onUtterance.current = null;
+    once?.(full());
     deliver();
   });
 
@@ -116,23 +122,27 @@ export function useDictation() {
     return () => clearInterval(i);
   }, [state]);
 
-  /** Starts listening. On web this must run inside the tap, with nothing awaited before it. */
-  const start = useCallback(async () => {
+  /**
+   * Starts listening. On web this must run inside the tap, with nothing awaited before it.
+   * With `once`, it stops by itself when the person pauses and hands the sentence to `once` (voice conversation).
+   */
+  const start = useCallback(async (once?: (t: string) => void) => {
     setError('');
     setText('');
     committed.current = '';
     interim.current = '';
     restarts.current = 0;
-    wanted.current = true;
+    wanted.current = !once;
+    onUtterance.current = once ?? null;
     try {
-      if (Platform.OS === 'web') return begin();
+      if (Platform.OS === 'web') return begin(!once);
       const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!perm.granted) {
         wanted.current = false;
         setError(ERRORS['not-allowed']());
         return;
       }
-      begin();
+      begin(!once);
     } catch {
       wanted.current = false;
       setError(tx('تعذّر تشغيل الميكروفون.', 'Could not start the microphone.'));
@@ -161,6 +171,7 @@ export function useDictation() {
   const cancel = useCallback(() => {
     wanted.current = false;
     waiter.current = null;
+    onUtterance.current = null;
     committed.current = '';
     interim.current = '';
     setText('');

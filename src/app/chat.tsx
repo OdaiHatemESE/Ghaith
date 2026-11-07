@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Mark } from '../components/Logo';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TaskSheet } from '../components/TaskSheet';
+import { VoiceChat } from '../components/VoiceChat';
 import { ChatAction, ChatMessage, chatSince, loadChat, newChat, sendChat } from '../lib/chat';
 import { D, tx } from '../lib/i18n';
 import { useStore } from '../lib/store';
@@ -92,7 +93,9 @@ function Bubble({ m, onAction }: { m: ChatMessage; onAction: (a: ChatAction) => 
 export default function Chat() {
   const insets = useSafeAreaInsets();
   const wide = useWide();
-  const { tasks, refresh } = useStore();
+  const { tasks, refresh, settings, saveSettings } = useStore();
+  const [talking, setTalking] = useState(false);
+  const voice = settings.voice === 'fatima' ? 'fatima' : 'hamdan';
   const dict = useDictation();
   const [since, setSince] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -145,6 +148,19 @@ export default function Chat() {
     }
     setListening(true);
     dict.start(); // must run inside the tap on web
+  };
+
+  /** A finished voice turn, written into the chat like a typed one */
+  const onTurn = (said: string, reply: string, actions: ChatAction[]) => {
+    const at = new Date().toISOString();
+    setMessages((l) => [...l, { id: 'u' + at, role: 'user', content: said, actions: [], created_at: at }, { id: 'a' + at, role: 'assistant', content: reply, actions, created_at: at }]);
+    if (actions.length) refresh();
+  };
+
+  const startTalking = () => {
+    if (dict.state === 'unsupported' || !since) return;
+    setErr('');
+    setTalking(true);
   };
 
   const fresh = async () => {
@@ -224,17 +240,27 @@ export default function Chat() {
             accessibilityLabel={tx('رسالة لغيث', 'Message to Ghaith')}
             style={{ flex: 1, minHeight: 42, maxHeight: 160, fontFamily: F.regular, fontSize: TS.body, lineHeight: 22, color: C.text, textAlign: D.align, writingDirection: D.writing, paddingVertical: 10, paddingHorizontal: 6, ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null) }}
           />
-          <Pressable onPress={() => send(text)} disabled={!text.trim() || busy || listening} accessibilityLabel={tx('إرسال', 'Send')} style={{ width: 42, height: 42, borderRadius: 21, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: C.lineHi, opacity: text.trim() && !busy && !listening ? 1 : 0.45 }}>
-            <Gradient colors={GRADIENT} angle="diagonal" radius={21} />
-            <Icon name="send" size={19} color="#fff" />
-          </Pressable>
+          {text.trim() || listening || dict.state === 'unsupported' ? (
+            <Pressable onPress={() => send(text)} disabled={!text.trim() || busy || listening} accessibilityLabel={tx('إرسال', 'Send')} style={{ width: 42, height: 42, borderRadius: 21, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: C.lineHi, opacity: text.trim() && !busy && !listening ? 1 : 0.45 }}>
+              <Gradient colors={GRADIENT} angle="diagonal" radius={21} />
+              <Icon name="send" size={19} color="#fff" />
+            </Pressable>
+          ) : (
+            <Pressable onPress={startTalking} disabled={busy || !since} accessibilityLabel={tx('محادثة صوتية مع غيث', 'Voice chat with Ghaith')} style={{ width: 42, height: 42, borderRadius: 21, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: C.indigo, opacity: busy || !since ? 0.45 : 1 }}>
+              <Gradient colors={GRADIENT} angle="diagonal" radius={21} />
+              <Icon name="waveform" size={21} color="#fff" />
+            </Pressable>
+          )}
         </View>
         <T size={TS.tiny} color={C.faint} align="center" style={{ marginTop: 6 }}>
-          {tx('غيث ينفّذ مباشرة في المحادثة. للمراجعة قبل الحفظ استخدم التسجيل أو الكتابة من الرئيسية.', 'In chat Ghaith acts right away. To review before saving, capture from the home page.')}
+          {tx('اضغط زر الموجة للتحدث مع غيث صوتياً. غيث ينفّذ مباشرة في المحادثة.', 'Tap the wave button to talk with Ghaith by voice. In chat Ghaith acts right away.')}
         </T>
       </View>
 
       {task && <TaskSheet task={task} onClose={() => setOpen(null)} />}
+      {talking && since && (
+        <VoiceChat dict={dict} since={since} voice={voice} onVoice={(v) => saveSettings({ voice: v })} onTurn={onTurn} onClose={() => setTalking(false)} />
+      )}
     </KeyboardAvoidingView>
   );
 }

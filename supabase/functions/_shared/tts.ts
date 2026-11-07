@@ -1,4 +1,4 @@
-// Arabic speech for غيث's replies.
+// Speech for غيث's replies (Arabic or English).
 // 1) Gemini TTS (GEMINI_API_KEY, already used by قديش): natural voices that can be told to speak with a Gulf accent.
 // 2) Azure neural UAE voices, if AZURE_SPEECH_KEY + AZURE_SPEECH_REGION are set instead.
 // Without either, returns null and the app falls back to the phone's own voice.
@@ -43,9 +43,12 @@ function wav(pcm: Uint8Array, rate = 24000): Uint8Array {
 async function gemini(text: string, voice: string): Promise<Speech | null> {
   const key = Deno.env.get('GEMINI_API_KEY');
   if (!key) return null;
+  const arabic = /[\u0600-\u06FF]/.test(text);
   const prompt =
-    'Read the following Arabic text aloud as a friendly, calm personal assistant from the UAE: natural Gulf (Emirati) ' +
-    'colloquial pronunciation, conversational pace, warm tone. Read it exactly as written:\n\n' + text.slice(0, 1500);
+    (arabic
+      ? 'Read the following Arabic text aloud as a friendly, calm personal assistant from the UAE: clear Arabic with a warm, light Gulf (Emirati) accent, conversational pace. '
+      : 'Read the following text aloud as a friendly, calm personal assistant: natural, warm English, conversational pace. ') +
+    'Read it exactly as written:\n\n' + text.slice(0, 1500);
   try {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`, {
       method: 'POST',
