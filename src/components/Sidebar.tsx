@@ -65,6 +65,9 @@ export function Sidebar() {
       </View>
 
       <View style={{ height: 1, backgroundColor: C.line, marginVertical: 16, marginHorizontal: 8 }} />
+      <Item icon="message-text-outline" label={tx('محادثة غيث', 'Chat with Ghaith')} active={path.endsWith('/chat')} onPress={() => router.navigate('/chat')} />
+
+      <View style={{ height: 1, backgroundColor: C.line, marginVertical: 16, marginHorizontal: 8 }} />
       <Item icon="tune-variant" label={tx('الإعدادات', 'Settings')} active={path.endsWith('/settings')} onPress={() => router.navigate('/settings')} />
 
       <View style={{ flex: 1 }} />

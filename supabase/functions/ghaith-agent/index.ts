@@ -1,12 +1,10 @@
-// ghaith-agent: غيث's brain. Takes what the user said (voice transcript or typed text), lets Claude act on the
-// user's tasks through tools (add, update, complete, delete, search), and returns a short spoken-style Arabic reply.
+// ghaith-agent: the chat with غيث. Takes a message (typed or dictated), lets Claude act on the user's tasks through
+// tools (add, update, complete, delete, search, remember) and returns a short reply in formal Arabic or English.
 // Every database call goes through a client that acts as the signed-in user, so row-level security applies.
 //
-// With `speak`, the reply also comes back as audio in غيث's voice (see ../_shared/tts.ts).
-//
-// Secrets: ANTHROPIC_API_KEY (required), GHAITH_MODEL (optional, default below), GEMINI_API_KEY (voice; see ../_shared/tts.ts).
+// Body: { text, source: 'voice' | 'text', lang: 'ar' | 'en', since?: ISO time the current conversation started }
+// Secrets: ANTHROPIC_API_KEY (required), GHAITH_MODEL (optional, default below).
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2';
-import { speakArabic } from '../_shared/tts.ts';
 
 const MODEL = Deno.env.get('GHAITH_MODEL') || 'claude-sonnet-5-5';
 const MAX_STEPS = 8;
@@ -146,7 +144,7 @@ const TOOLS = [
   },
 ];
 
-function systemPrompt(now: Date, open: Task[], followUpDays: number, name: string | null, notes: { id: string; fact: string }[]): string {
+function systemPrompt(now: Date, open: Task[], followUpDays: number, name: string | null, notes: { id: string; fact: string }[], lang: string): string {
   const list = open.length ? open.map((t) => '- ' + describe(t, now)).join('\n') : '(ما في مهام مفتوحة)';
   const known = notes.length ? notes.map((n) => `- [${n.id.slice(0, 8)}] ${n.fact}`).join('\n') : '(لسا ما في)';
   return `أنت "غيث"، السكرتير والمساعد الشخصي${name ? ` لـ ${name}` : ''}. هو موظف إداري بجهة حكومية بالإمارات، عنده إيميلات ومهام كثيرة وبينسى. شغلتك تدير مهامه: تسجّلها، تصنّفها، تذكّره فيها، وتتابع معه لحد ما تخلص. غالباً بيحكي معك بالصوت وهو سايق أو ماشي، فالنص اللي بيوصلك تحويل صوت لنص وممكن فيه أخطاء إملائية بسيطة: افهم المقصود.
@@ -198,12 +196,16 @@ ${known}
 - لما يسأل "شو عندي؟" أو "شو المتأخر؟": جاوب من القائمة فوق، الأهم والمتأخر أول، باختصار.
 - "ذكّرني" يعني أضف مهمة (أو عدّل التذكير إذا المهمة موجودة).
 
+اللغة والصياغة:
+${lang === 'en'
+  ? '- Reply in clear, concise English. Write task titles and notes in English.'
+  : '- ردّ بالعربية الفصحى المبسّطة والمهذّبة، حتى لو كتب المستخدم بالعامية. واكتب عناوين المهام والملاحظات بالفصحى المرتّبة (مثل: "الرد على بريد وزارة المالية بشأن الميزانية").'}
+
 الرد:
-- عربي بلهجة بيضاء قريبة من الشامية والخليجية، قصير جداً (جملة أو جملتين، والأسئلة عن القائمة ممكن أطول شوي)، لأنه غالباً بينقرأ بصوت عالي وهو سايق.
-- بدون markdown، بدون نجوم أو عناوين أو إيموجي. استخدم فواصل وجمل طبيعية.
-- اذكر الأوقات بشكل طبيعي ("بكرة الساعة 9 الصبح"، "الأحد الجاي") مش بأرقام ISO، ولا تذكر أرقام المهام.
-- إذا ما في شيء ينعمل (سلام، شكراً)، رد بلطف وباختصار.
-- إذا كان واضح إنه بينهي المحادثة (شكراً، خلص، بس هيك، يعطيك العافية، سلام)، رد بكلمة لطيفة قصيرة وحط بآخر ردك [END].`;
+- هذه محادثة مكتوبة على الشاشة: ردّ باختصار ووضوح. جملة أو جملتان للتنفيذ، وقائمة قصيرة عند السؤال عن المهام.
+- للقوائم استخدم سطراً لكل بند يبدأ بـ "- "، ولا تستخدم نجوماً أو عناوين أو إيموجي.
+- اذكر الأوقات بشكل طبيعي (غداً الساعة 9:00 صباحاً، الأحد القادم) لا بصيغة ISO، ولا تذكر أرقام المهام.
+- إذا لم يكن هناك ما يُنفَّذ (تحية، شكر)، ردّ بلطف وباختصار.`;
 }
 
 // ---------- Claude ----------
@@ -355,11 +357,15 @@ Deno.serve(async (req) => {
   const user = userData?.user;
   if (!user) return fail(401, 'NOT_SIGNED_IN', 'سجّل دخول أولاً');
 
-  let body: { text?: string; source?: string; speak?: boolean; voice?: string };
+  let body: { text?: string; source?: string; lang?: string; since?: string };
   try { body = await req.json(); } catch { return fail(400, 'BAD_REQUEST', 'الطلب غير صالح'); }
   const text = String(body.text ?? '').trim().slice(0, 2000);
   if (!text) return fail(400, 'EMPTY', 'ما وصلني كلام');
   const source = body.source === 'voice' ? 'voice' : 'text';
+  const lang = body.lang === 'en' ? 'en' : 'ar';
+  // The conversation the user is in: from `since` (when they started a new chat), at most the last 12 hours
+  const floor = new Date(Date.now() - 12 * 3600_000);
+  const sinceDate = body.since && !isNaN(new Date(body.since).getTime()) && new Date(body.since) > floor ? new Date(body.since) : floor;
 
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) return fail(503, 'NOT_CONFIGURED', 'غيث مش مفعّل لسا (مفتاح Claude ناقص).');
@@ -371,7 +377,8 @@ Deno.serve(async (req) => {
 
   const [{ data: open }, { data: history }, { data: settings }, { data: notes }] = await Promise.all([
     db.from('ghaith_tasks').select(FIELDS).eq('status', 'open').order('created_at', { ascending: true }).limit(150),
-    db.from('ghaith_messages').select('role,content,actions').order('id', { ascending: false }).limit(12),
+    // Only chat turns: captures from the capture screen are logged in the same table without the chat marker
+    db.from('ghaith_messages').select('role,content,actions').or('role.eq.assistant,actions.cs.[{"type":"chat"}]').gte('created_at', sinceDate.toISOString()).order('id', { ascending: false }).limit(12),
     db.from('ghaith_settings').select('follow_up_days').maybeSingle(),
     db.from('ghaith_notes').select('id,fact').order('created_at').limit(80),
   ]);
@@ -389,7 +396,7 @@ Deno.serve(async (req) => {
   }
   if (past.length && past[past.length - 1].role === 'user') past.pop();
 
-  const system = systemPrompt(now, (open ?? []) as Task[], settings?.follow_up_days ?? 3, (profile as { display_name?: string } | null)?.display_name ?? null, (notes ?? []) as { id: string; fact: string }[]);
+  const system = systemPrompt(now, (open ?? []) as Task[], settings?.follow_up_days ?? 3, (profile as { display_name?: string } | null)?.display_name ?? null, (notes ?? []) as { id: string; fact: string }[], lang);
   const messages: Msg[] = [...past, { role: 'user', content: text }];
   const actions: Action[] = [];
   let answer = '';
@@ -411,18 +418,17 @@ Deno.serve(async (req) => {
     }
   } catch (e) {
     console.error('[ghaith-agent]', String(e));
-    if (!actions.length) return fail(502, 'UPSTREAM', 'ما قدرت أوصل لعقلي هالمرة، جرّب كمان شوي.');
+    if (!actions.length) return fail(502, 'UPSTREAM', lang === 'en' ? 'Could not reach Ghaith right now, please try again shortly.' : 'تعذّر الوصول إلى غيث هذه المرة، حاول بعد قليل.');
   }
 
-  if (!answer) answer = actions.length ? `تمام، ${actions.map((a) => a.title).join('، ')}.` : 'ما فهمت عليك منيح، عيدها بطريقة ثانية؟';
+  if (!answer) answer = actions.length ? (lang === 'en' ? `Done: ${actions.map((a) => a.title).join(', ')}.` : `تم: ${actions.map((a) => a.title).join('، ')}.`) : lang === 'en' ? 'I did not quite get that, could you say it another way?' : 'لم أفهم الطلب جيداً، هل يمكنك صياغته بطريقة أخرى؟';
   const end = answer.includes('[END]');
-  answer = answer.replace('[END]', '').replace(/[*#`_]/g, '').trim().slice(0, 3900);
+  answer = answer.replace('[END]', '').replace(/[*#`]/g, '').trim().slice(0, 3900);
 
   await db.from('ghaith_messages').insert([
-    { role: 'user', content: text },
+    { role: 'user', content: text, actions: [{ type: 'chat' }] },
     { role: 'assistant', content: answer, actions },
   ]);
 
-  const speech = body.speak ? await speakArabic(answer, body.voice) : null;
-  return reply(200, { reply: answer, actions, end, audio: speech?.audio ?? null, audio_type: speech?.type ?? null, model: MODEL });
+  return reply(200, { reply: answer, actions, end, model: MODEL });
 });

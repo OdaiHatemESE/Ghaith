@@ -411,6 +411,7 @@ export default function Home() {
         <View style={{ flexDirection: D.row, alignItems: 'center', justifyContent: 'space-between' }}>
           <Logo size={32} />
           <View style={{ flexDirection: D.row, gap: 8 }}>
+            <IconButton icon="message-text-outline" label={tx('محادثة غيث', 'Chat with Ghaith')} onPress={() => router.push('/chat')} />
             <IconButton icon="format-list-checks" label={tx('كل المهام', 'All tasks')} onPress={() => router.push('/tasks')} />
             <IconButton icon="tune-variant" label={tx('الإعدادات', 'Settings')} onPress={() => router.push('/settings')} />
           </View>
