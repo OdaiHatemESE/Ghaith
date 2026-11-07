@@ -8,6 +8,7 @@ linked in Settings and confirmed by sending the code the server gave them (`ghai
 from anyone else is dropped without being stored. Each email is read by the same capture engine as the app
 (`_shared/capture.ts`), and the proposals wait in `ghaith_inbox` until the person approves them in the Inbox screen.
 
+- Without an email provider: `tools/gmail-bridge.gs` (Google Apps Script) passes mail sent to an alias on a Google account to the same webhook, every minute.
 - Ghaith's address shown in the app: `create or replace function public.ghaith_inbox_address() returns text language sql stable set search_path = '' as $$ select '<address>'::text $$;`
 # غيث (Ghaith)
 
