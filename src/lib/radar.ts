@@ -40,7 +40,7 @@ export async function loadRadar(): Promise<void> {
   ]);
   if (list.error) return; // table not reachable (offline): keep what was shown
   const row = Array.isArray(status.data) ? status.data[0] : null;
-  set({ items: (list.data ?? []) as RadarItem[], loaded: true, lastScan: row?.last_scheduled_at ?? state.lastScan, scanOk: row ? !!row.ok : state.scanOk });
+  set({ items: (Array.isArray(list.data) ? list.data : []) as RadarItem[], loaded: true, lastScan: row?.last_scheduled_at ?? state.lastScan, scanOk: row ? !!row.ok : state.scanOk });
 }
 
 export function clearRadar() {
