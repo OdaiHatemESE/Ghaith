@@ -2,8 +2,10 @@
 // what needs attention in ghaith_nudges, without the user asking.
 //
 // Two ways in, one engine:
-// - scheduled: pg_cron calls every 15 minutes with the header x-radar-key (a random key kept in Vault; checked by
-//   ghaith_radar_key_ok). Scans all users with the service role.
+// - scheduled: pg_cron calls every hour with the header x-radar-key (a random key kept in Vault; checked by
+//   ghaith_radar_key_ok). Each person chooses how often they are checked (ghaith_settings.radar_every_hours: 2, 4, 8,
+//   12 or 24 hours, default 8, or 0 = off); a run scans only the people whose interval has passed, with the service
+//   role, and stamps radar_checked_at for them.
 // - manual ("check now" in the app, for demos): the signed-in user's own JWT. Scans only that user, through a client
 //   that acts as them, so row-level security applies. At most once every 20 seconds per user.
 //
@@ -30,29 +32,50 @@ const reply = (status: number, body: unknown) => new Response(JSON.stringify(bod
 type Counts = { users_scanned: number; tasks_scanned: number; created: number; refreshed: number; reopened: number; resolved: number; ai_calls: number; ai_failed: number };
 type Result = { counts: Counts; kept_dismissed: number };
 
-async function scan(db: SupabaseClient, userId: string | null, now: Date): Promise<Result> {
-  // 1. Open tasks (and, for the scope, the users they belong to)
+const DEFAULT_EVERY_H = 8;
+const EARLY_MS = 10 * 60_000; // an hourly run a few minutes early still counts, so "every 8 hours" doesn't slip to 9
+
+/** The people a scheduled run should check now: they have something to look at and their own interval has passed */
+async function dueUsers(admin: SupabaseClient, now: Date): Promise<string[]> {
+  const [{ data: owners, error: e1 }, { data: active, error: e2 }, { data: prefs, error: e3 }] = await Promise.all([
+    admin.from('ghaith_tasks').select('user_id').eq('status', 'open').limit(5000),
+    admin.from('ghaith_nudges').select('user_id').in('status', ['new', 'seen', 'acted']).limit(5000),
+    admin.from('ghaith_settings').select('user_id,radar_every_hours,radar_checked_at'),
+  ]);
+  if (e1 || e2 || e3) throw new Error(`due: ${(e1 ?? e2 ?? e3)?.code ?? ''}`);
+  const pref = new Map(((prefs ?? []) as { user_id: string; radar_every_hours: number; radar_checked_at: string | null }[]).map((p) => [p.user_id, p]));
+  const people = new Set<string>([...(owners ?? []), ...(active ?? [])].map((r: { user_id: string }) => r.user_id));
+  return [...people].filter((u) => {
+    const p = pref.get(u);
+    const every = p ? p.radar_every_hours : DEFAULT_EVERY_H;
+    if (!every) return false; // automatic check turned off
+    return !p?.radar_checked_at || now.getTime() - Date.parse(p.radar_checked_at) >= every * 3600_000 - EARLY_MS;
+  });
+}
+
+async function scan(db: SupabaseClient, users: string[] | null, now: Date): Promise<Result> {
+  // 1. Open tasks of the people in scope
   let q = db.from('ghaith_tasks').select(TASK_FIELDS).eq('status', 'open').limit(5000);
-  if (userId) q = q.eq('user_id', userId);
+  if (users) q = q.in('user_id', users);
   const { data: taskRows, error: taskErr } = await q;
   if (taskErr) throw new Error(`tasks: ${taskErr.code ?? ''}`);
   const tasks = (taskRows ?? []) as RadarTask[];
 
   // 2. Each user's follow-up days and language
   let sq = db.from('ghaith_settings').select('user_id,follow_up_days,lang');
-  if (userId) sq = sq.eq('user_id', userId);
+  if (users) sq = sq.in('user_id', users);
   const { data: settingRows } = await sq;
   const settings = new Map<string, RadarSettings>(((settingRows ?? []) as { user_id: string; follow_up_days: number; lang: Lang }[]).map((s) => [s.user_id, { follow_up_days: s.follow_up_days ?? 3, lang: s.lang === 'en' ? 'en' : 'ar' }]));
 
   // 3. What is already stored (every state, so dismissed findings are respected)
   let nq = db.from('ghaith_nudges').select(NUDGE_FIELDS).limit(20000);
-  if (userId) nq = nq.eq('user_id', userId);
+  if (users) nq = nq.in('user_id', users);
   const { data: nudgeRows, error: nudgeErr } = await nq;
   if (nudgeErr) throw new Error(`nudges: ${nudgeErr.code ?? ''}`);
   const existing = (nudgeRows ?? []) as Nudge[];
 
   // Scope = users with open tasks, plus users with active findings (whose tasks may all be closed now)
-  const scope = new Set<string>(userId ? [userId] : [...tasks.map((t) => t.user_id), ...existing.filter((n) => n.status === 'new' || n.status === 'seen' || n.status === 'acted').map((n) => n.user_id)]);
+  const scope = new Set<string>(users ? users : [...tasks.map((t) => t.user_id), ...existing.filter((n) => n.status === 'new' || n.status === 'seen' || n.status === 'acted').map((n) => n.user_id)]);
   const findings = detect(tasks, settings, now);
   const plan = reconcile(existing, findings, new Set(tasks.map((t) => t.id)), scope, now);
 
@@ -72,7 +95,7 @@ async function scan(db: SupabaseClient, userId: string | null, now: Date): Promi
   const counts: Counts = { users_scanned: scope.size, tasks_scanned: tasks.length, ...changes, ai_calls: 0, ai_failed: 0 };
   const key = Deno.env.get('ANTHROPIC_API_KEY');
   let pq = db.from('ghaith_nudges').select('id,user_id,task_id,risk_type,reason,lang').eq('ai_status', 'pending').eq('status', 'new').in('severity', ['medium', 'high']).order('score', { ascending: false }).limit(AI_PER_RUN);
-  if (userId) pq = pq.eq('user_id', userId);
+  if (users) pq = pq.in('user_id', users);
   const { data: pending } = await pq;
   if (!key || !pending?.length) return { counts, kept_dismissed };
   const byId = new Map(tasks.map((t) => [t.id, t]));
@@ -149,7 +172,13 @@ Deno.serve(async (req) => {
     }
   }
   try {
-    const { counts, kept_dismissed } = await scan(db, userId, now);
+    // Scheduled: only the people whose interval has passed (none = a quick run that only proves the schedule is alive)
+    const users = mode === 'manual' ? [userId!] : await dueUsers(admin, now);
+    const { counts, kept_dismissed } = users.length ? await scan(db, users, now) : { counts: { users_scanned: 0, tasks_scanned: 0, created: 0, refreshed: 0, reopened: 0, resolved: 0, ai_calls: 0, ai_failed: 0 }, kept_dismissed: 0 };
+    if (mode === 'scheduled' && users.length) {
+      const { error } = await admin.from('ghaith_settings').upsert(users.map((u) => ({ user_id: u, radar_checked_at: now.toISOString() })), { onConflict: 'user_id' });
+      if (error) console.error('[radar] stamp failed', error.code);
+    }
     if (run) await admin.from('ghaith_radar_runs').update({ ...counts, finished_at: new Date().toISOString() }).eq('id', run.id);
     console.log(`[radar] ${mode} ok`, JSON.stringify({ ...counts, kept_dismissed }));
     return reply(200, { ok: true, mode, ...counts, kept_dismissed });

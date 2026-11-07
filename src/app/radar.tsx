@@ -2,13 +2,13 @@
 // is, with what to do about it. Opening the screen marks new findings as seen.
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { RefreshControl, ScrollView, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { agoLabel, RadarFinding, SEVERITY_COLOR, useRadarItems } from '../components/Radar';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TaskSheet } from '../components/TaskSheet';
 import { D, tx } from '../lib/i18n';
-import { askFor, dismiss, loadRadar, markActed, markSeen, RadarItem, runCheck, SEVERITY_LABEL } from '../lib/radar';
+import { askFor, dismiss, everyLabel, loadRadar, markActed, markSeen, RadarItem, runCheck, SEVERITY_LABEL } from '../lib/radar';
 import { useStore } from '../lib/store';
 import { addDays, atTime, startOfDay, Task } from '../lib/tasks';
 import { useNow } from '../lib/useNow';
@@ -19,7 +19,8 @@ import { Card, Gradient, Icon, PrimaryButton, T } from '../ui';
 export default function Radar() {
   const insets = useSafeAreaInsets();
   const wide = useWide();
-  const { complete, save } = useStore();
+  const { complete, save, settings } = useStore();
+  const every = settings.radar_every_hours;
   const { list, lastScan, loaded } = useRadarItems();
   const [open, setOpen] = useState<Task | null>(null);
   const [checking, setChecking] = useState(false);
@@ -75,14 +76,19 @@ export default function Radar() {
               <View style={{ flex: 1 }}>
                 <T w="bold" size={TS.h2} color="#fff">{tx('ما يحتاج انتباهك', 'Your attention is needed')}</T>
                 <T size={TS.small} color="rgba(255,255,255,0.75)">
-                  {tx('يراقب غيث مهامك على الخادم كل 15 دقيقة، حتى والتطبيق مغلق.', 'Ghaith checks your tasks on the server every 15 minutes, even with the app closed.')}
+                  {every
+                    ? tx(`يفحص غيث مهامك على الخادم ${everyLabel(every)}، حتى والتطبيق مغلق.`, `Ghaith checks your tasks on the server ${everyLabel(every).toLowerCase()}, even with the app closed.`)
+                    : tx('الفحص التلقائي متوقف. يمكنك الفحص يدوياً، أو تشغيله من الإعدادات.', 'Automatic checks are off. Check by hand, or turn them on in Settings.')}
                 </T>
               </View>
             </View>
             <View style={{ flexDirection: D.row, alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
               <View style={{ flexDirection: D.row, alignItems: 'center', gap: 6 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: lastScan && now.getTime() - Date.parse(lastScan) < 40 * 60000 ? C.teal : C.amber }} />
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: every && lastScan && now.getTime() - Date.parse(lastScan) < (every + 1.5) * 3600000 ? C.teal : C.amber }} />
                 <T size={TS.tiny} color="rgba(255,255,255,0.8)">{tx('آخر فحص تلقائي', 'Last automatic check')}: {agoLabel(lastScan, now.getTime())}</T>
+                <Pressable onPress={() => router.push('/settings')} hitSlop={8} accessibilityRole="link">
+                  <T size={TS.tiny} w="bold" color={C.teal}>· {tx('تغيير التوقيت', 'Change schedule')}</T>
+                </Pressable>
               </View>
               <PrimaryButton label={tx('افحص الآن', 'Check now')} icon="radar" onPress={check} busy={checking} style={{ minWidth: 140 }} />
             </View>

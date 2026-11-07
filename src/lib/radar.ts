@@ -32,15 +32,18 @@ const set = (s: Partial<State>) => {
 
 const FIELDS = 'id,task_id,risk_type,severity,score,facts,lang,ai_recommendation,ai_status,status,first_detected_at,last_detected_at,notify_after';
 
-/** Active findings (new or seen), most important first, and when the last scheduled scan ran */
+/** Active findings (new or seen), most important first, and when this person was last checked automatically */
 export async function loadRadar(): Promise<void> {
-  const [list, status] = await Promise.all([
+  const [list, status, mine] = await Promise.all([
     supabase.from('ghaith_nudges').select(FIELDS).in('status', ['new', 'seen']).order('score', { ascending: false }).limit(60),
     supabase.rpc('ghaith_radar_status'),
+    supabase.from('ghaith_settings').select('radar_checked_at').maybeSingle(),
   ]);
   if (list.error) return; // table not reachable (offline): keep what was shown
   const row = Array.isArray(status.data) ? status.data[0] : null;
-  set({ items: (Array.isArray(list.data) ? list.data : []) as RadarItem[], loaded: true, lastScan: row?.last_scheduled_at ?? state.lastScan, scanOk: row ? !!row.ok : state.scanOk });
+  // The last automatic check of *this* person (each person has their own interval), not the scheduler's last run
+  const checked = (mine.data as { radar_checked_at?: string | null } | null)?.radar_checked_at ?? null;
+  set({ items: (Array.isArray(list.data) ? list.data : []) as RadarItem[], loaded: true, lastScan: checked ?? state.lastScan, scanOk: row ? !!row.ok : state.scanOk });
 }
 
 export function clearRadar() {
@@ -124,4 +127,11 @@ export function askFor(item: RadarItem, title: string): string {
     default:
       return tx(`هل ما زالت «${title}» مطلوبة؟ ساعدني أقرر ماذا أفعل بها.`, `Is “${title}” still needed? Help me decide what to do with it.`);
   }
+}
+
+/** "every 8 hours" / "off", for the Radar screen and settings */
+export function everyLabel(h: number): string {
+  if (!h) return tx('متوقف', 'Off');
+  if (h === 24) return tx('مرة يومياً', 'Once a day');
+  return tx(`كل ${h === 2 ? 'ساعتين' : `${h} ساعات`}`, `Every ${h} hours`);
 }
