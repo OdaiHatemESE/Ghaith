@@ -2,7 +2,8 @@
 // tools (add, update, complete, delete, search, remember) and returns a short reply in formal Arabic or English.
 // Every database call goes through a client that acts as the signed-in user, so row-level security applies.
 //
-// Body: { text, source: 'voice' | 'text', lang: 'ar' | 'en', since?: ISO time the current conversation started }
+// Body: { text, source: 'voice' | 'text', lang: 'ar' | 'en', since?: ISO time the current conversation started,
+//        mode?: 'voice' (the voice conversation: the reply is read aloud, so it is kept short and spoken) }
 // Secrets: ANTHROPIC_API_KEY (required), GHAITH_MODEL (optional, default below).
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2';
 
@@ -144,7 +145,7 @@ const TOOLS = [
   },
 ];
 
-function systemPrompt(now: Date, open: Task[], followUpDays: number, name: string | null, notes: { id: string; fact: string }[], lang: string): string {
+function systemPrompt(now: Date, open: Task[], followUpDays: number, name: string | null, notes: { id: string; fact: string }[], lang: string, spoken = false): string {
   const list = open.length ? open.map((t) => '- ' + describe(t, now)).join('\n') : '(ما في مهام مفتوحة)';
   const known = notes.length ? notes.map((n) => `- [${n.id.slice(0, 8)}] ${n.fact}`).join('\n') : '(لسا ما في)';
   return `أنت "غيث"، السكرتير والمساعد الشخصي${name ? ` لـ ${name}` : ''}. هو موظف إداري بجهة حكومية بالإمارات، عنده إيميلات ومهام كثيرة وبينسى. شغلتك تدير مهامه: تسجّلها، تصنّفها، تذكّره فيها، وتتابع معه لحد ما تخلص. غالباً بيحكي معك بالصوت وهو سايق أو ماشي، فالنص اللي بيوصلك تحويل صوت لنص وممكن فيه أخطاء إملائية بسيطة: افهم المقصود.
@@ -202,8 +203,12 @@ ${lang === 'en'
   : '- ردّ بالعربية الفصحى المبسّطة والمهذّبة، حتى لو كتب المستخدم بالعامية. واكتب عناوين المهام والملاحظات بالفصحى المرتّبة (مثل: "الرد على بريد وزارة المالية بشأن الميزانية").'}
 
 الرد:
-- هذه محادثة مكتوبة على الشاشة: ردّ باختصار ووضوح. جملة أو جملتان للتنفيذ، وقائمة قصيرة عند السؤال عن المهام.
-- للقوائم استخدم سطراً لكل بند يبدأ بـ "- "، ولا تستخدم نجوماً أو عناوين أو إيموجي.
+${spoken
+  ? `- هذه محادثة صوتية: ردّك سيُقرأ بصوت عالٍ فوراً، فكل كلمة زائدة تأخير. ردّ بجملة واحدة قصيرة، وجملتين كحد أقصى (أقل من 30 كلمة).
+- لا قوائم ولا رموز ولا أقواس. عند السؤال عن المهام اذكر العدد وأهم مهمتين أو ثلاث في جملة واحدة متصلة، ثم اسأل إن كان يريد البقية.
+- للتنفيذ قل ما فعلته بكلمات قليلة (مثل: "تم، ذكّرتك غداً الساعة التاسعة صباحاً").`
+  : `- هذه محادثة مكتوبة على الشاشة: ردّ باختصار ووضوح. جملة أو جملتان للتنفيذ، وقائمة قصيرة عند السؤال عن المهام.
+- للقوائم استخدم سطراً لكل بند يبدأ بـ "- "، ولا تستخدم نجوماً أو عناوين أو إيموجي.`}
 - اذكر الأوقات بشكل طبيعي (غداً الساعة 9:00 صباحاً، الأحد القادم) لا بصيغة ISO، ولا تذكر أرقام المهام.
 - إذا لم يكن هناك ما يُنفَّذ (تحية، شكر)، ردّ بلطف وباختصار.`;
 }
@@ -357,7 +362,7 @@ Deno.serve(async (req) => {
   const user = userData?.user;
   if (!user) return fail(401, 'NOT_SIGNED_IN', 'سجّل دخول أولاً');
 
-  let body: { text?: string; source?: string; lang?: string; since?: string };
+  let body: { text?: string; source?: string; lang?: string; since?: string; mode?: string };
   try { body = await req.json(); } catch { return fail(400, 'BAD_REQUEST', 'الطلب غير صالح'); }
   const text = String(body.text ?? '').trim().slice(0, 2000);
   if (!text) return fail(400, 'EMPTY', 'ما وصلني كلام');
@@ -375,14 +380,14 @@ Deno.serve(async (req) => {
   const { count } = await db.from('ghaith_messages').select('id', { count: 'exact', head: true }).eq('role', 'user').gte('created_at', dayStart.toISOString());
   if ((count ?? 0) >= DAILY_LIMIT) return fail(429, 'DAILY_LIMIT', 'وصلت الحد اليومي للرسائل، بنكمل بكرة.');
 
-  const [{ data: open }, { data: history }, { data: settings }, { data: notes }] = await Promise.all([
+  const [{ data: open }, { data: history }, { data: settings }, { data: notes }, { data: profile }] = await Promise.all([
     db.from('ghaith_tasks').select(FIELDS).eq('status', 'open').order('created_at', { ascending: true }).limit(150),
     // Only chat turns: captures from the capture screen are logged in the same table without the chat marker
     db.from('ghaith_messages').select('role,content,actions').or('role.eq.assistant,actions.cs.[{"type":"chat"}]').gte('created_at', sinceDate.toISOString()).order('id', { ascending: false }).limit(12),
     db.from('ghaith_settings').select('follow_up_days').maybeSingle(),
     db.from('ghaith_notes').select('id,fact').order('created_at').limit(80),
+    db.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
   ]);
-  const { data: profile } = await db.from('profiles').select('display_name').eq('id', user.id).maybeSingle();
 
   // Earlier turns, oldest first, alternating and starting with the user
   const past: Msg[] = [];
@@ -396,7 +401,7 @@ Deno.serve(async (req) => {
   }
   if (past.length && past[past.length - 1].role === 'user') past.pop();
 
-  const system = systemPrompt(now, (open ?? []) as Task[], settings?.follow_up_days ?? 3, (profile as { display_name?: string } | null)?.display_name ?? null, (notes ?? []) as { id: string; fact: string }[], lang);
+  const system = systemPrompt(now, (open ?? []) as Task[], settings?.follow_up_days ?? 3, (profile as { display_name?: string } | null)?.display_name ?? null, (notes ?? []) as { id: string; fact: string }[], lang, body.mode === 'voice');
   const messages: Msg[] = [...past, { role: 'user', content: text }];
   const actions: Action[] = [];
   let answer = '';

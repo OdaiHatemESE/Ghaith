@@ -41,8 +41,9 @@ export async function loadChat(since: string): Promise<ChatMessage[]> {
   return ((data ?? []) as ChatMessage[]).map((m) => ({ ...m, actions: m.role === 'assistant' ? (m.actions ?? []) : [] }));
 }
 
-export async function sendChat(text: string, source: 'voice' | 'text', since: string): Promise<{ reply: string; actions: ChatAction[] }> {
-  const { data, error } = await supabase.functions.invoke('ghaith-agent', { body: { text, source, lang: getLang(), since } });
+/** `spoken`: the voice conversation, where the reply is read aloud and so comes back short */
+export async function sendChat(text: string, source: 'voice' | 'text', since: string, spoken = false): Promise<{ reply: string; actions: ChatAction[] }> {
+  const { data, error } = await supabase.functions.invoke('ghaith-agent', { body: { text, source, lang: getLang(), since, mode: spoken ? 'voice' : undefined } });
   if (error) {
     let message = tx('تعذّر الوصول إلى غيث، تحقّق من الإنترنت وحاول مرة أخرى.', 'Could not reach Ghaith. Check your connection and try again.');
     try {

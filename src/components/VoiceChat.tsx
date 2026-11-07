@@ -1,7 +1,8 @@
 // Voice mode inside the chat: talk to غيث and hear it answer in its voice, hands-free. It listens for one sentence,
 // answers out loud, then listens again, until you end it. Every turn is also written into the chat.
+import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, Modal, Pressable, View } from 'react-native';
+import { BackHandler, Modal, Platform, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChatAction, sendChat } from '../lib/chat';
 import { D, tx } from '../lib/i18n';
@@ -54,16 +55,18 @@ export function VoiceChat({
         return again.current();
       }
       quiet.current = 0;
+      // A tick so you know you were heard, before the answer comes
+      if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       setSaid(text);
       setAnswer('');
       setState('thinking');
       try {
-        const r = await sendChat(text, 'voice', since);
+        const r = await sendChat(text, 'voice', since, true);
+        onTurn(text, r.reply, r.actions); // written into the chat even if voice mode was closed meanwhile
         if (!open.current) return;
-        onTurn(text, r.reply, r.actions);
+        // The text shows at once; the orb turns to "speaking" when the voice actually starts
         setAnswer(r.reply);
-        setState('speaking');
-        await say(r.reply, voiceRef.current);
+        await say(r.reply, voiceRef.current, () => open.current && setState('speaking'));
         if (open.current) again.current();
       } catch (e) {
         if (!open.current) return;
@@ -84,6 +87,15 @@ export function VoiceChat({
     listen();
   }, [listen]);
 
+  // However the screen goes away, nothing keeps talking or listening
+  useEffect(
+    () => () => {
+      open.current = false;
+      stopSaying();
+    },
+    [],
+  );
+
   const close = useCallback(() => {
     open.current = false;
     stopSaying();
@@ -101,7 +113,7 @@ export function VoiceChat({
 
   /** The orb: stop speaking and listen, or start listening when idle */
   const tapOrb = () => {
-    if (state === 'speaking') {
+    if (state === 'speaking' || (state === 'thinking' && answer)) {
       stopSaying();
       return; // the turn's say() resolves and listening starts again
     }
@@ -115,7 +127,9 @@ export function VoiceChat({
     state === 'listening'
       ? tx('أستمع إليك…', 'Listening…')
       : state === 'thinking'
-        ? tx('غيث يفكّر…', 'Ghaith is thinking…')
+        ? answer
+          ? tx('يجهّز الصوت… اضغط للتخطي', 'Preparing the voice… tap to skip')
+          : tx('غيث يفكّر…', 'Ghaith is thinking…')
         : state === 'speaking'
           ? tx('غيث يتحدث، اضغط لمقاطعته', 'Ghaith is speaking, tap to interrupt')
           : tx('اضغط على الدائرة وتحدّث', 'Tap the orb and talk');
