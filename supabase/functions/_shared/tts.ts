@@ -1,8 +1,8 @@
 // Speech for غيث's replies (Arabic or English).
-// 1) Azure neural voices (AZURE_SPEECH_KEY + AZURE_SPEECH_REGION): the Emirati voices Hamdan and Fatima, fast enough
-//    for a conversation. Used first when set.
-// 2) Gemini TTS (GEMINI_API_KEY, already used by قديش): more expressive but slow (it makes the whole clip first) and
-//    tightly limited on the free tier. Used when Azure isn't set up or fails.
+// 1) Gemini TTS (GEMINI_API_KEY, already used by قديش): the most natural voice, told to speak with a light Emirati
+//    accent. Slower (it makes the whole clip first); needs billing on the key's Google project to avoid free limits.
+// 2) Azure neural voices (AZURE_SPEECH_KEY + AZURE_SPEECH_REGION): Hamdan and Fatima, fast; used when Gemini fails.
+// The secret GHAITH_TTS_PROVIDER=azure puts Azure first instead.
 // Without either, returns null and the app falls back to the phone's own voice.
 // Returns base64 audio and its MIME type.
 
@@ -117,5 +117,6 @@ async function azure(text: string, voice: string): Promise<Speech | null> {
 /** `text` read by the chosen voice ("hamdan" male, "fatima" female), or null when speech is not set up or fails */
 export async function speakArabic(text: string, voice = 'hamdan'): Promise<Speech | null> {
   if (!text.trim() || voice === 'device') return null;
-  return (await azure(text, voice)) ?? (await gemini(text, voice));
+  if (Deno.env.get('GHAITH_TTS_PROVIDER')?.toLowerCase() === 'azure') return (await azure(text, voice)) ?? (await gemini(text, voice));
+  return (await gemini(text, voice)) ?? (await azure(text, voice));
 }
