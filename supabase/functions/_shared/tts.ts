@@ -1,6 +1,8 @@
 // Speech for غيث's replies (Arabic or English).
-// 1) Gemini TTS (GEMINI_API_KEY, already used by قديش): natural voices that can be told to speak with a Gulf accent.
-// 2) Azure neural UAE voices, if AZURE_SPEECH_KEY + AZURE_SPEECH_REGION are set instead.
+// 1) Azure neural voices (AZURE_SPEECH_KEY + AZURE_SPEECH_REGION): the Emirati voices Hamdan and Fatima, fast enough
+//    for a conversation. Used first when set.
+// 2) Gemini TTS (GEMINI_API_KEY, already used by قديش): more expressive but slow (it makes the whole clip first) and
+//    tightly limited on the free tier. Used when Azure isn't set up or fails.
 // Without either, returns null and the app falls back to the phone's own voice.
 // Returns base64 audio and its MIME type.
 
@@ -8,7 +10,10 @@ export type Speech = { audio: string; type: string };
 
 const GEMINI_MODEL = Deno.env.get('GHAITH_TTS_MODEL') || 'gemini-3.1-flash-tts-preview';
 const GEMINI_VOICES: Record<string, string> = { hamdan: 'Charon', fatima: 'Kore' };
-const AZURE_VOICES: Record<string, string> = { hamdan: 'ar-AE-HamdanNeural', fatima: 'ar-AE-FatimaNeural' };
+const AZURE_VOICES: Record<string, { ar: string; en: string }> = {
+  hamdan: { ar: 'ar-AE-HamdanNeural', en: 'en-US-GuyNeural' },
+  fatima: { ar: 'ar-AE-FatimaNeural', en: 'en-US-JennyNeural' },
+};
 
 export const ttsConfigured = () => !!(Deno.env.get('GEMINI_API_KEY') || (Deno.env.get('AZURE_SPEECH_KEY') && Deno.env.get('AZURE_SPEECH_REGION')));
 
@@ -83,11 +88,14 @@ const escapeXml = (s: string) => s.replace(/[<>&'"]/g, (c) => ({ '<': '&lt;', '>
 
 async function azure(text: string, voice: string): Promise<Speech | null> {
   const key = Deno.env.get('AZURE_SPEECH_KEY');
-  const region = Deno.env.get('AZURE_SPEECH_REGION');
-  const name = AZURE_VOICES[voice];
-  if (!key || !region || !name) return null;
+  // "UAE North" or "uaenorth" both work
+  const region = Deno.env.get('AZURE_SPEECH_REGION')?.toLowerCase().replace(/\s+/g, '');
+  const pair = AZURE_VOICES[voice] ?? AZURE_VOICES.hamdan;
+  if (!key || !region) return null;
+  const arabic = /[\u0600-\u06FF]/.test(text);
+  const name = arabic ? pair.ar : pair.en;
   const ssml =
-    `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ar-AE">` +
+    `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${arabic ? 'ar-AE' : 'en-US'}">` +
     `<voice name="${name}"><prosody rate="+6%">${escapeXml(text.slice(0, 1500))}</prosody></voice></speak>`;
   try {
     const res = await fetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
@@ -109,5 +117,5 @@ async function azure(text: string, voice: string): Promise<Speech | null> {
 /** `text` read by the chosen voice ("hamdan" male, "fatima" female), or null when speech is not set up or fails */
 export async function speakArabic(text: string, voice = 'hamdan'): Promise<Speech | null> {
   if (!text.trim() || voice === 'device') return null;
-  return (await gemini(text, voice)) ?? (await azure(text, voice));
+  return (await azure(text, voice)) ?? (await gemini(text, voice));
 }
