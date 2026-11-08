@@ -2,6 +2,7 @@
 import type { Session } from '@supabase/supabase-js';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
+import { botEmit } from './bot';
 import { loginEmail } from './config';
 import { friendlyError, supabase } from './supabase';
 import { getLang, tx } from './i18n';
@@ -167,12 +168,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const complete = useCallback(
     async (id: string) => {
+      const title = tasks.find((t) => t.id === id)?.title ?? '';
       patchLocal(id, { status: 'done', done_at: new Date().toISOString() });
       const { error } = await supabase.rpc('ghaith_complete_task', { p_id: id });
       if (error) patchLocal(id, { status: 'open', done_at: null });
+      else botEmit({ kind: 'done', title });
       await loadTasks();
     },
-    [loadTasks],
+    [loadTasks, tasks],
   );
 
   const reopen = useCallback(

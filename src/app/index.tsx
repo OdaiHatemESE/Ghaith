@@ -3,13 +3,15 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { countTasks, RecordView, ReviewView, ThinkingView, TypeSheet } from '../components/Capture';
+import { GhaithGreeter } from '../components/GhaithGreeter';
 import { AttentionRow, cardStyle, goTab, Ring, SpaceSwitch, SpaceTag, TAB_SPACE, TabBar, useAttention } from '../components/Spaces';
 import { TaskRow } from '../components/TaskRow';
 import { TaskSheet } from '../components/TaskSheet';
 import { D, getLang, tx } from '../lib/i18n';
+import { botEmit } from '../lib/bot';
 import { inSpace, SpaceFilter, useSpace } from '../lib/space';
 import { Proposal, Source, useStore } from '../lib/store';
-import { anchor, catOf, clock, dayDiff, dayLabel, greeting, GROUP_ORDER, GroupKey, groupOf, GROUPS, isLate, KINDS, longDate, sortTasks, Space, SPACES, spaceOf, startOfDay, Task } from '../lib/tasks';
+import { anchor, catOf, clock, dayDiff, dayLabel, GROUP_ORDER, GroupKey, groupOf, GROUPS, isLate, KINDS, longDate, sortTasks, Space, SPACES, spaceOf, startOfDay, Task } from '../lib/tasks';
 import { useNow } from '../lib/useNow';
 import { useDictation } from '../lib/voice';
 import { useWide } from '../lib/useWide';
@@ -79,7 +81,6 @@ export default function Home() {
   const replies = openTasks.filter((t) => t.kind === 'reply').length;
   const total = today.length + doneToday.length;
   const pct = total ? Math.round((doneToday.length / total) * 100) : 0;
-  const hello = `${greeting(now)}${name ? tx(`، ${name}`, `, ${name}`) : ''}`;
 
   // The next reminder in the coming three hours
   const upcoming = useMemo(() => {
@@ -126,6 +127,7 @@ export default function Home() {
     if (e) return e;
     setFlow({ step: 'idle' });
     const adds = list.filter((p) => p.op === 'add').length;
+    if (adds) botEmit({ kind: 'saved', count: adds });
     setToast(adds === list.length ? tx(`حُفظت ${countTasks(adds)}`, `Saved ${countTasks(adds)}`) : tx('تم تطبيق التغييرات', 'Changes applied'));
     setTimeout(() => setToast(''), 3200);
     return null;
@@ -269,10 +271,10 @@ export default function Home() {
       <View style={{ flex: 1, backgroundColor: C.bg }}>
         <ScrollView contentContainerStyle={{ paddingHorizontal: 36, paddingTop: 30, paddingBottom: 48 }}>
           <View style={{ width: '100%', maxWidth: 1320, alignSelf: 'center' }}>
-            <View style={{ flexDirection: D.row, alignItems: 'flex-end', justifyContent: 'space-between', gap: 16 }}>
-              <View style={{ gap: 4 }}>
+            <View style={{ flexDirection: D.row, alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+              <View style={{ flex: 1, maxWidth: 760, gap: 6 }}>
                 <T size={14} color={C.sub}>{longDate(now)}</T>
-                <T w="bold" size={30} color={C.indigo} style={{ lineHeight: 42 }}>{hello}</T>
+                <GhaithGreeter size={112} />
               </View>
               <Pressable
                 onPress={() => setOpen('new')}
@@ -333,13 +335,13 @@ export default function Home() {
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <ScrollView contentContainerStyle={{ paddingTop: insets.top + 14, paddingHorizontal: 20, paddingBottom: insets.bottom + TAB_SPACE + 24 }}>
         <View style={{ flexDirection: D.row, alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <T size={13} color={C.sub}>{longDate(now)}</T>
-            <T w="bold" size={24} color={C.indigo} style={{ lineHeight: 34 }} numberOfLines={1}>{hello}</T>
-          </View>
-          <Pressable onPress={() => router.push('/settings')} accessibilityRole="button" accessibilityLabel={tx('الإعدادات والحساب', 'Settings and account')} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.indigo, alignItems: 'center', justifyContent: 'center' }}>
-            {name ? <T w="bold" size={17} color="#fff">{name.trim().slice(0, 1)}</T> : <Icon name="account-outline" size={22} color="#fff" />}
+          <T size={13} color={C.sub}>{longDate(now)}</T>
+          <Pressable onPress={() => router.push('/settings')} accessibilityRole="button" accessibilityLabel={tx('الإعدادات والحساب', 'Settings and account')} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.indigo, alignItems: 'center', justifyContent: 'center' }}>
+            {name ? <T w="bold" size={16} color="#fff">{name.trim().slice(0, 1)}</T> : <Icon name="account-outline" size={21} color="#fff" />}
           </Pressable>
+        </View>
+        <View style={{ marginTop: 6, marginHorizontal: -6 }}>
+          <GhaithGreeter size={96} />
         </View>
 
         <SpaceSwitch counts={counts} style={{ marginTop: 18 }} />

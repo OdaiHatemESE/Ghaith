@@ -10,7 +10,8 @@ import { say, stopSaying, Voice } from '../lib/speech';
 import { useDictation } from '../lib/voice';
 import { C, R, tint, TS } from '../theme';
 import { Icon, IconButton, T } from '../ui';
-import { Orb, OrbState } from './Orb';
+import { GhaithBot } from './GhaithBot';
+import type { OrbState } from './Orb';
 
 type Dict = ReturnType<typeof useDictation>;
 
@@ -151,7 +152,7 @@ export function VoiceChat({
 
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
           <Pressable onPress={tapOrb} accessibilityRole="button" accessibilityLabel={status}>
-            <Orb state={state} level={state === 'listening' ? dict.level : state === 'speaking' ? 0.35 : 0} size={260} />
+            <GhaithBot state={state === 'listening' ? 'listen' : state === 'thinking' ? 'think' : state === 'speaking' ? 'talk' : 'idle'} level={state === 'listening' ? dict.level : 0} size={250} />
           </Pressable>
           <T w="bold" size={TS.h2} color="#fff" align="center" style={{ marginTop: 28 }}>{status}</T>
 

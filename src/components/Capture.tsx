@@ -12,7 +12,7 @@ import { useTick } from '../lib/useTick';
 import { useWide } from '../lib/useWide';
 import { C, liftMd, R, tint, TS } from '../theme';
 import { Card, Check, ErrorText, Field, GhostButton, Icon, IconButton, IconName, Num, PrimaryButton, T } from '../ui';
-import { Mark } from './Logo';
+import { GhaithBot } from './GhaithBot';
 import { Sheet } from './Sheet';
 import { TaskSheet } from './TaskSheet';
 
@@ -110,9 +110,7 @@ export function RecordView({ text, level, error, startedAt, onDone, onCancel }: 
               }}
             />
           ))}
-          <View style={{ width: 124, height: 124, borderRadius: 38, backgroundColor: C.indigo, alignItems: 'center', justifyContent: 'center', shadowColor: C.teal, shadowOpacity: 0.45, shadowRadius: 40, shadowOffset: { width: 0, height: 12 }, elevation: 10 }}>
-            <Mark size={78} />
-          </View>
+          <GhaithBot state="listen" level={level} size={170} />
         </View>
 
         <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 4, height: 50 }}>
@@ -185,16 +183,13 @@ export function TypeSheet({ mode, onSubmit, onClose }: { mode: 'text' | 'email';
 export function ThinkingView() {
   const insets = useSafeAreaInsets();
   const now = useTick(80);
-  const s = 1 + 0.06 * Math.sin(now / 260);
   const dots = '.'.repeat(1 + (Math.floor(now / 400) % 3));
   return (
     <Modal visible animationType="fade" statusBarTranslucent>
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: insets.bottom }}>
         <Glow />
-        <View style={{ transform: [{ scale: s }], width: 124, height: 124, borderRadius: 38, backgroundColor: C.indigo, alignItems: 'center', justifyContent: 'center', shadowColor: C.glow, shadowOpacity: 0.5, shadowRadius: 40, shadowOffset: { width: 0, height: 12 }, elevation: 10 }}>
-          <Mark size={78} />
-        </View>
-        <T w="bold" size={TS.h2} align="center" style={{ marginTop: 28 }}>{tx('غيث يرتّب', 'Ghaith is organising')}{dots}</T>
+        <GhaithBot state="think" size={190} />
+        <T w="bold" size={TS.h2} align="center" style={{ marginTop: 18 }}>{tx('غيث يرتّب', 'Ghaith is organising')}{dots}</T>
         <T size={TS.small} color={C.sub} align="center">{tx('يحوّل كلامك إلى مهام وتعديلات واضحة', 'Turning what you said into clear tasks and changes')}</T>
       </View>
     </Modal>
