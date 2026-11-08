@@ -1,20 +1,22 @@
-// Desktop navigation: the mark, the main places, and counts that matter at a glance.
-import { router, useGlobalSearchParams, usePathname } from 'expo-router';
+// Desktop navigation, in the brand's deep indigo: the mark, the four places (home, tasks, radar, chat), the two
+// spaces (work, personal) with their open counts, and the account at the bottom.
+import { router, usePathname } from 'expo-router';
 import Constants from 'expo-constants';
 import React from 'react';
 import { Pressable, View } from 'react-native';
 import { D, tx } from '../lib/i18n';
+import { setSpace, SpaceFilter, useSpace } from '../lib/space';
 import { useStore } from '../lib/store';
-import { groupOf } from '../lib/tasks';
-import { useNow } from '../lib/useNow';
-import { C, R, tint, TS } from '../theme';
+import { SPACES, spaceOf } from '../lib/tasks';
+import { C, R, TS } from '../theme';
 import { Icon, IconName, T } from '../ui';
 import { versionLabel } from './AutoUpdate';
-import { Logo } from './Logo';
-import { useInboxCount } from './Inbox';
-import { useRadarItems } from './Radar';
+import { Mark } from './Logo';
+import { useAttention } from './Spaces';
 
-function Item({ icon, label, active, count, countColor, onPress }: { icon: IconName; label: string; active: boolean; count?: number; countColor?: string; onPress: () => void }) {
+const ON_DARK = '#D5D8F5';
+
+function Item({ icon, label, active, count, alert, onPress }: { icon: IconName; label: string; active: boolean; count?: number; alert?: boolean; onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
@@ -24,71 +26,98 @@ function Item({ icon, label, active, count, countColor, onPress }: { icon: IconN
         flexDirection: D.row,
         alignItems: 'center',
         gap: 12,
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-        borderRadius: 14,
-        backgroundColor: active ? tint(C.glow, 0.1) : pressed || hovered ? C.bg : 'transparent',
+        height: 44,
+        paddingHorizontal: 12,
+        borderRadius: 12,
+        backgroundColor: active ? 'rgba(255,255,255,0.13)' : pressed || hovered ? 'rgba(255,255,255,0.06)' : 'transparent',
       })}
     >
-      <Icon name={icon} size={20} color={active ? C.glow : C.sub} />
-      <T w={active ? 'semibold' : 'regular'} color={active ? C.indigo : C.text} style={{ flex: 1 }}>{label}</T>
+      <Icon name={icon} size={20} color={active ? '#fff' : ON_DARK} />
+      <T w={active ? 'bold' : 'medium'} color={active ? '#fff' : ON_DARK} style={{ flex: 1 }}>{label}</T>
       {!!count && (
-        <View style={{ minWidth: 24, paddingHorizontal: 7, height: 22, borderRadius: 11, backgroundColor: tint(countColor ?? C.sub, 0.12), alignItems: 'center', justifyContent: 'center' }}>
-          <T w="semibold" size={TS.tiny} color={countColor ?? C.sub} align="center">{count}</T>
+        <View style={{ minWidth: 22, paddingHorizontal: 6, height: 22, borderRadius: 11, backgroundColor: alert ? C.late : 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' }}>
+          <T w="bold" size={TS.tiny} color="#fff" align="center">{count}</T>
         </View>
       )}
     </Pressable>
   );
 }
 
+function SpaceItem({ k, label, dot, count }: { k: SpaceFilter; label: string; dot: string; count: number }) {
+  const space = useSpace();
+  const on = space === k;
+  return (
+    <Pressable
+      onPress={() => setSpace(on ? 'all' : k)}
+      accessibilityRole="button"
+      accessibilityState={{ selected: on }}
+      style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({
+        flexDirection: D.row,
+        alignItems: 'center',
+        gap: 10,
+        height: 40,
+        paddingHorizontal: 12,
+        borderRadius: 12,
+        backgroundColor: on ? 'rgba(255,255,255,0.13)' : pressed || hovered ? 'rgba(255,255,255,0.06)' : 'transparent',
+      })}
+    >
+      <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: dot }} />
+      <T w={on ? 'bold' : 'medium'} color={on ? '#fff' : ON_DARK} style={{ flex: 1 }}>{label}</T>
+      <T size={TS.small} color="#A9AEE0">{count}</T>
+    </Pressable>
+  );
+}
+
 export function Sidebar() {
-  const { tasks, name, signOut } = useStore();
-  const now = useNow();
+  const { tasks, name } = useStore();
   const path = usePathname();
-  const { kind } = useGlobalSearchParams<{ kind?: string }>();
   const open = tasks.filter((t) => t.status === 'open');
-  const late = open.filter((t) => groupOf(t, now) === 'late').length;
-  const waiting = open.filter((t) => t.kind === 'waiting').length;
-  const replies = open.filter((t) => t.kind === 'reply').length;
-  const onTasks = path.endsWith('/tasks');
-  const radar = useRadarItems();
-  const emails = useInboxCount();
+  const work = open.filter((t) => spaceOf(t.category) === 'work').length;
+  const attention = useAttention().length;
+  const at = (p: string) => path === p || path.endsWith(p);
 
   return (
-    <View style={{ width: 260, backgroundColor: C.surface, [D.rtl ? 'borderLeftWidth' : 'borderRightWidth']: 1, borderColor: C.line, paddingHorizontal: 14, paddingTop: 24, paddingBottom: 18 }}>
-      <View style={{ paddingHorizontal: 8, marginBottom: 28 }}>
-        <Logo size={34} />
-        <T size={TS.tiny} color={C.faint} style={{ marginTop: 4 }}>{tx('مساعد المهام والتذكير', 'AI task & reminder assistant')}</T>
+    <View style={{ width: 252, backgroundColor: C.indigo, paddingHorizontal: 16, paddingTop: 26, paddingBottom: 18 }}>
+      <View style={{ flexDirection: D.row, alignItems: 'center', gap: 10, paddingHorizontal: 8, marginBottom: 6 }}>
+        <Mark size={36} />
+        <T w="bold" size={22} color="#fff">{tx('غيث', 'Ghaith')}</T>
       </View>
+      <T size={TS.tiny} color="#A9AEE0" style={{ paddingHorizontal: 8, marginBottom: 24 }}>{tx('مساعد المهام والتذكير', 'AI task & reminder assistant')}</T>
 
       <View style={{ gap: 4 }}>
-        <Item icon="view-dashboard-outline" label={tx('الرئيسية', 'Home')} active={path === '/' || path === ''} count={late} countColor={C.late} onPress={() => router.navigate('/')} />
-        <Item icon="format-list-checks" label={tx('كل المهام', 'All tasks')} active={onTasks && !kind} count={open.length} onPress={() => router.navigate('/tasks')} />
-        <Item icon="timer-sand" label={tx('بانتظار رد', 'Waiting on')} active={onTasks && kind === 'waiting'} count={waiting} countColor={C.glow} onPress={() => router.navigate({ pathname: '/tasks', params: { kind: 'waiting' } })} />
-        <Item icon="reply" label={tx('بحاجة إلى رد', 'Needs reply')} active={onTasks && kind === 'reply'} count={replies} countColor={C.tealDeep} onPress={() => router.navigate({ pathname: '/tasks', params: { kind: 'reply' } })} />
+        <Item icon="home-outline" label={tx('الرئيسية', 'Home')} active={path === '/' || path === ''} onPress={() => router.navigate('/')} />
+        <Item icon="format-list-checks" label={tx('المهام', 'Tasks')} active={at('/tasks')} count={open.length} onPress={() => router.navigate('/tasks')} />
+        <Item icon="radar" label={tx('الرادار', 'Radar')} active={at('/radar')} count={attention} alert onPress={() => router.navigate('/radar')} />
+        <Item icon="message-text-outline" label={tx('المحادثة', 'Chat')} active={at('/chat')} onPress={() => router.navigate('/chat')} />
       </View>
 
-      <View style={{ height: 1, backgroundColor: C.line, marginVertical: 16, marginHorizontal: 8 }} />
-      <Item icon="radar" label={tx('رادار غيث', 'Ghaith Radar')} active={path.endsWith('/radar')} count={radar.unread || radar.list.length} countColor={radar.unread ? C.late : C.sub} onPress={() => router.navigate('/radar')} />
-      <Item icon="email-fast-outline" label={tx('بريد غيث', 'Email to Ghaith')} active={path.endsWith('/inbox')} count={emails} countColor={C.tealDeep} onPress={() => router.navigate('/inbox')} />
-      <Item icon="message-text-outline" label={tx('محادثة غيث', 'Chat with Ghaith')} active={path.endsWith('/chat')} onPress={() => router.navigate('/chat')} />
-
-      <View style={{ height: 1, backgroundColor: C.line, marginVertical: 16, marginHorizontal: 8 }} />
-      <Item icon="tune-variant" label={tx('الإعدادات', 'Settings')} active={path.endsWith('/settings')} onPress={() => router.navigate('/settings')} />
+      <T size={TS.tiny} w="bold" color="#A9AEE0" style={{ marginTop: 26, marginBottom: 6, paddingHorizontal: 12 }}>{tx('المساحات', 'Spaces')}</T>
+      <View style={{ gap: 2 }}>
+        <SpaceItem k="work" label={SPACES.work.label} dot="#8E95FF" count={work} />
+        <SpaceItem k="personal" label={SPACES.personal.label} dot={C.teal} count={open.length - work} />
+      </View>
 
       <View style={{ flex: 1 }} />
-      <View style={{ borderRadius: R.card, backgroundColor: C.bg, padding: 14, gap: 2 }}>
+      <Pressable
+        onPress={() => router.navigate('/settings')}
+        accessibilityRole="link"
+        accessibilityLabel={tx('الإعدادات والحساب', 'Settings and account')}
+        style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({
+          borderRadius: R.card,
+          backgroundColor: at('/settings') ? 'rgba(255,255,255,0.13)' : pressed || hovered ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.06)',
+          padding: 12,
+          gap: 4,
+        })}
+      >
         <View style={{ flexDirection: D.row, alignItems: 'center', gap: 10 }}>
-          <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: tint(C.indigo, 0.1), alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="account-outline" size={19} color={C.indigo} />
+          <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
+            {name ? <T w="bold" color={C.indigo}>{name.trim().slice(0, 1)}</T> : <Icon name="account-outline" size={19} color={C.indigo} />}
           </View>
-          <T w="medium" style={{ flex: 1 }} numberOfLines={1}>{name || tx('حسابي', 'My account')}</T>
-          <Pressable onPress={() => signOut()} hitSlop={8} accessibilityLabel={tx('تسجيل الخروج', 'Sign out')}>
-            <Icon name="logout" size={18} color={C.faint} />
-          </Pressable>
+          <T w="bold" color="#fff" style={{ flex: 1 }} numberOfLines={1}>{name || tx('حسابي', 'My account')}</T>
+          <Icon name="cog-outline" size={19} color={ON_DARK} />
         </View>
-        <T size={TS.tiny} color={C.faint}>{versionLabel(Constants.expoConfig?.version ?? '1.0.0')}</T>
-      </View>
+        <T size={TS.tiny} color="#A9AEE0">{versionLabel(Constants.expoConfig?.version ?? '1.0.0')}</T>
+      </Pressable>
     </View>
   );
 }

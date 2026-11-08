@@ -57,7 +57,7 @@ type Task = {
   due_at: string | null; remind_at: string | null; repeat: string | null; status: string; done_at: string | null; created_at: string;
 };
 const KIND_AR: Record<string, string> = { todo: 'عليّ', waiting: 'ناطر رد', reply: 'لازم أرد' };
-const CAT_AR: Record<string, string> = { work: 'عمل', home: 'بيت', car: 'سيارة', family: 'عائلة', personal: 'شخصي', money: 'فلوس', other: 'أخرى' };
+const CAT_AR: Record<string, string> = { work: 'عمل', meeting: 'عمل/اجتماع', email: 'عمل/بريد', report: 'عمل/تقرير', home: 'شخصي/بيت', car: 'شخصي/سيارة', family: 'شخصي/عائلة', personal: 'شخصي', money: 'شخصي/فلوس', other: 'شخصي/أخرى' };
 const FIELDS = 'id,title,notes,kind,category,priority,person,due_at,remind_at,repeat,status,done_at,created_at';
 
 function describe(t: Task, now: Date): string {
@@ -78,7 +78,7 @@ type Action = { type: 'added' | 'updated' | 'done' | 'deleted' | 'reopened'; id:
 const taskProps = {
   title: { type: 'string', description: 'عنوان قصير وواضح للمهمة بصيغة فعل، مثل "تجديد تأمين السيارة" أو "الرد على إيميل أحمد بخصوص العقد"' },
   kind: { type: 'string', enum: ['todo', 'waiting', 'reply'], description: 'todo = شغلة عليّ أعملها. waiting = طلبت شيء من حدا وناطر رده/تسليمه. reply = حدا بعتلي (إيميل/رسالة/طلب) ولازم أرد عليه' },
-  category: { type: 'string', enum: Object.keys(CAT_AR), description: 'work عمل، home بيت، car سيارة، family عائلة/أولاد، personal شخصي/صحة/مواعيد خاصة، money فواتير/دفعات/بنك، other' },
+  category: { type: 'string', enum: Object.keys(CAT_AR), description: 'العمل: meeting اجتماع/ورشة/عرض، email رد أو إرسال بريد أو كتاب رسمي، report تقرير/دراسة/ملف، work أي عمل آخر (المدير، الزملاء، الجهات، المشاريع). الشخصي: car سيارة، home بيت، family عائلة/أولاد، money فواتير/دفعات/بنك، personal صحة/مواعيد خاصة، other' },
   priority: { type: 'string', enum: ['high', 'normal', 'low'] },
   person: { type: ['string', 'null'], description: 'الشخص أو الجهة المرتبطة (المدير، أحمد، قسم IT، البنك...) إن وجد' },
   due_at: { type: ['string', 'null'], description: 'الموعد النهائي بتوقيت دبي بصيغة YYYY-MM-DDTHH:MM، أو null إذا ما في موعد' },
@@ -182,7 +182,7 @@ ${known}
 
 التصنيف والأوقات:
 - النوع: "لازم أعمل/أخلّص/أجهّز" = todo. "بعتت لفلان وناطر/طلبت من/فلان رح يبعتلي" = waiting. "فلان بعتلي/وصلني إيميل/لازم أرد على" = reply.
-- التصنيف: خمّن من السياق (المدير، الاجتماع، البوابة، التقرير، إيميل شغل = work؛ تأمين/تسجيل/صيانة/مخالفة سيارة = car؛ فواتير/دفعات = money؛ أغراض/تصليح البيت = home؛ الأولاد/المدرسة/الأهل = family). إذا مش واضح وكان الكلام عن إيميل أو شخص بالشغل فهو work.
+- التصنيف: قرّر أولاً هل هي عمل أم شخصي، ثم الأدق. عمل: اجتماع/ورشة/عرض = meeting، رد أو إرسال إيميل أو كتاب رسمي = email، تقرير/دراسة/ملف = report، غير ذلك من الشغل (المدير، الزملاء، الجهات، البوابة، المشاريع) = work. شخصي: تأمين/تسجيل/صيانة/مخالفة سيارة = car؛ فواتير/دفعات/بنك = money؛ أغراض/تصليح البيت = home؛ الأولاد/المدرسة/الأهل = family؛ صحة/مواعيد خاصة = personal. اتبع المعلومات المحفوظة إن ذكرت كيف يصنّف شيئاً. إذا مش واضح وكان الكلام عن إيميل أو شخص بالشغل فهو عمل.
 - الأولوية high فقط إذا قال مستعجل/ضروري/مهم جداً أو الموعد اليوم أو بكرة لشغلة شغل حساسة.
 - قواعد الأوقات (كلها بتوقيت دبي):
   • "الصبح" = 09:00، "الظهر" = 13:00، "العصر" = 16:00، "المسا" = 19:00، "الليل" = 21:00. "بعد ساعة/ساعتين" من الوقت الحالي.

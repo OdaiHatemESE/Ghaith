@@ -1,7 +1,7 @@
 // A task's timeline: what happened to it (recorded by the database on every change) and the user's own notes.
 import { tx } from './i18n';
 import { supabase } from './supabase';
-import { CATS, Category, clock, dayLabel, Kind, KINDS, Repeat, REPEATS, whenLabel } from './tasks';
+import { catOf, clock, dayLabel, Kind, KINDS, Repeat, REPEATS, whenLabel } from './tasks';
 
 export type TaskEvent = {
   id: number;
@@ -54,7 +54,7 @@ function value(field: string, v: unknown): string {
   }
   if (field === 'due_at' || field === 'remind_at') return when(v);
   if (field === 'kind') return KINDS[v as Kind]?.label ?? String(v);
-  if (field === 'category') return CATS[v as Category]?.label ?? String(v);
+  if (field === 'category') return v ? catOf(String(v)).label : String(v);
   if (field === 'priority') return v === 'high' ? tx('عاجلة', 'urgent') : tx('عادية', 'normal');
   if (field === 'repeat') return REPEATS[v as Repeat]?.label ?? String(v);
   return String(v);

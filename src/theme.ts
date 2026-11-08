@@ -20,6 +20,9 @@ export const C = {
   faint: '#A3A8BC',
   // states
   late: '#F04461',
+  lateText: '#C42B47', // the late colour as text and small marks on white (4.5:1)
+  glowText: '#5B3FD9',
+  tealText: '#0B6E70',
   amber: '#F59E0B',
   amberText: '#B76E00',
   ok: '#14C7C9',

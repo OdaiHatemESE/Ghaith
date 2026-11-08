@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import React from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { D, getLang, tx } from '../lib/i18n';
-import { anchor, CATS, clock, dayDiff, dayLabel, isLate, KINDS, Task } from '../lib/tasks';
+import { anchor, catOf, clock, dayDiff, dayLabel, isLate, KINDS, Task } from '../lib/tasks';
 import { C, TS } from '../theme';
 import { Check, Icon, IconName, T } from '../ui';
 
@@ -46,7 +46,7 @@ export function TaskRow({ task, onToggle, onOpen, last, now = new Date(), note }
     onToggle();
   };
 
-  const rest = (note ? [task.person, note] : [task.kind !== 'todo' ? KINDS[task.kind].label : null, CATS[task.category].label, task.person]).filter(Boolean).join(' · ');
+  const rest = (note ? [task.person, note] : [task.kind !== 'todo' ? KINDS[task.kind].label : null, catOf(task.category).label, task.person]).filter(Boolean).join(' · ');
 
   return (
     <Pressable

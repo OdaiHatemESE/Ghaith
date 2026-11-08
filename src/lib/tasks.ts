@@ -2,7 +2,9 @@ import type { IconName } from '../ui';
 import { getLang, tx } from './i18n';
 
 export type Kind = 'todo' | 'waiting' | 'reply';
-export type Category = 'work' | 'home' | 'car' | 'family' | 'personal' | 'money' | 'other';
+export type Category = 'work' | 'meeting' | 'email' | 'report' | 'home' | 'car' | 'family' | 'personal' | 'money' | 'other';
+/** Work or personal: each category belongs to one */
+export type Space = 'work' | 'personal';
 export type Priority = 'high' | 'normal' | 'low';
 export type Repeat = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
@@ -41,6 +43,9 @@ export const KIND_ORDER: Kind[] = ['todo', 'waiting', 'reply'];
 
 export const CATS: Record<Category, Labelled & { icon: IconName; color: string }> = {
   work: L('عمل', 'Work', { icon: 'briefcase-outline', color: '#2F35A8' }),
+  meeting: L('اجتماعات', 'Meetings', { icon: 'account-tie-voice-outline', color: '#2F35A8' }),
+  email: L('بريد وردود', 'Email', { icon: 'email-outline', color: '#2F35A8' }),
+  report: L('تقارير', 'Reports', { icon: 'file-document-outline', color: '#2F35A8' }),
   home: L('منزل', 'Home', { icon: 'home-outline', color: '#0E8F91' }),
   car: L('سيارة', 'Car', { icon: 'car-outline', color: '#C2570C' }),
   family: L('عائلة', 'Family', { icon: 'account-group-outline', color: '#D9468F' }),
@@ -48,7 +53,21 @@ export const CATS: Record<Category, Labelled & { icon: IconName; color: string }
   money: L('مالية', 'Money', { icon: 'cash-multiple', color: '#B76E00' }),
   other: L('أخرى', 'Other', { icon: 'dots-horizontal', color: '#6B7280' }),
 };
-export const CAT_ORDER: Category[] = ['work', 'home', 'car', 'family', 'personal', 'money', 'other'];
+export const CAT_ORDER: Category[] = ['work', 'meeting', 'email', 'report', 'home', 'car', 'family', 'personal', 'money', 'other'];
+
+/** A category's details; an unknown one (from a newer server) reads as "other" */
+export const catOf = (c: string) => CATS[c as Category] ?? CATS.other;
+
+const WORK_CATS: Category[] = ['work', 'meeting', 'email', 'report'];
+export const spaceOf = (c: string): Space => (WORK_CATS.includes(c as Category) ? 'work' : 'personal');
+export const SPACE_CATS: Record<Space, Category[]> = { work: WORK_CATS, personal: ['home', 'car', 'family', 'personal', 'money', 'other'] };
+/** The colours of the two spaces: indigo for work, teal for personal */
+export const SPACES: Record<Space, Labelled & { icon: IconName; color: string; soft: string }> = {
+  work: L('العمل', 'Work', { icon: 'briefcase-outline', color: '#2F35A8', soft: '#ECEDFB' }),
+  personal: L('الشخصي', 'Personal', { icon: 'home-outline', color: '#0B6E70', soft: '#E2F5F5' }),
+};
+/** The category a task gets when moved to the other space */
+export const moveTo = (c: Category, s: Space): Category => (spaceOf(c) === s ? c : s === 'work' ? 'work' : 'personal');
 
 export const REPEATS: Record<Repeat, Labelled> = {
   daily: L('يومياً', 'Daily'),

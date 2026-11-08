@@ -1,20 +1,26 @@
-// Ghaith Radar: what the scheduled scan found that needs attention, most important first, grouped by how urgent it
-// is, with what to do about it. Opening the screen marks new findings as seen.
+// The Radar: everything that needs attention in one place: what the scheduled scan found in the tasks (grouped by how
+// urgent it is, with what to do about it) and the emails waiting for review. Filters by work / personal / email.
+// Opening the screen marks new findings as seen.
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { agoLabel, RadarFinding, SEVERITY_COLOR, useRadarItems } from '../components/Radar';
+import { ReviewView } from '../components/Capture';
+import { InboxEmail } from '../components/Inbox';
+import { agoLabel, RadarFinding, useRadarItems } from '../components/Radar';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { cardStyle, TAB_SPACE, TabBar, TabTitle } from '../components/Spaces';
+import { decide, InboxItem, loadInbox, saidOf, useInbox } from '../lib/inbox';
+import { currentSpace } from '../lib/space';
 import { TaskSheet } from '../components/TaskSheet';
 import { D, tx } from '../lib/i18n';
 import { askFor, dismiss, everyLabel, loadRadar, markActed, markSeen, RadarItem, runCheck, SEVERITY_LABEL } from '../lib/radar';
-import { useStore } from '../lib/store';
-import { addDays, atTime, startOfDay, Task } from '../lib/tasks';
+import { Proposal, useStore } from '../lib/store';
+import { addDays, atTime, spaceOf, startOfDay, Task } from '../lib/tasks';
 import { useNow } from '../lib/useNow';
 import { useWide } from '../lib/useWide';
-import { C, R, tint, TS } from '../theme';
-import { Card, Gradient, Icon, PrimaryButton, T } from '../ui';
+import { C, TS } from '../theme';
+import { Chip, ErrorText, GhostButton, Icon, T } from '../ui';
 
 export default function Radar() {
   const insets = useSafeAreaInsets();
@@ -56,83 +62,151 @@ export default function Radar() {
     markActed(item.id);
   };
 
-  const groups = (['high', 'medium', 'low'] as const).map((sev) => ({ sev, rows: list.filter((x) => x.item.severity === sev) })).filter((g) => g.rows.length);
+  // Emails waiting for review sit here too: one place for everything that needs attention
+  const { items: emails } = useInbox();
+  const [filter, setFilter] = useState<'all' | 'work' | 'personal' | 'mail'>(currentSpace);
+  const [review, setReview] = useState<{ item: InboxItem; proposals: Proposal[] } | null>(null);
+  const [retrying, setRetrying] = useState<string | null>(null);
+  const [err, setErr] = useState('');
+  const { apply, capture } = useStore();
+  const emailSpace = (m: InboxItem) => {
+    const first = m.proposals.find((p) => p.op === 'add');
+    return first && first.op === 'add' ? spaceOf(first.task.category) : 'work';
+  };
+  const findings = list.filter((x) => filter === 'all' || (filter !== 'mail' && spaceOf(x.task.category) === filter));
+  const mails = emails.filter((m) => filter === 'all' || filter === 'mail' || emailSpace(m) === filter);
+  const shownMails = filter === 'mail' || filter === 'all' || mails.length ? mails : [];
+  const groups = filter === 'mail' ? [] : (['high', 'medium', 'low'] as const).map((sev) => ({ sev, rows: findings.filter((x) => x.item.severity === sev) })).filter((g) => g.rows.length);
+  const n = { all: list.length + emails.length, work: list.filter((x) => spaceOf(x.task.category) === 'work').length + emails.filter((m) => emailSpace(m) === 'work').length, personal: list.filter((x) => spaceOf(x.task.category) === 'personal').length + emails.filter((m) => emailSpace(m) === 'personal').length, mail: emails.length };
+  const fresh = !!every && !!lastScan && now.getTime() - Date.parse(lastScan) < (every + 1.5) * 3600000;
+
+  /** Reads an email again in the app (from the excerpt kept on the server) when it failed on arrival */
+  const retry = async (item: InboxItem) => {
+    setRetrying(item.id);
+    setErr('');
+    try {
+      const proposals = await capture(`From: ${item.sender_name || item.sender}\nSubject: ${item.subject ?? ''}\n\n${item.excerpt ?? ''}`, 'email');
+      setReview({ item, proposals });
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+    setRetrying(null);
+  };
+
+  const finding = ({ item, task }: (typeof list)[number]) => (
+    <RadarFinding
+      key={item.id}
+      item={item}
+      task={task}
+      onOpen={() => setOpen(task)}
+      onDone={async () => (await complete(task.id), markActed(item.id))}
+      onPostpone={() => postpone(item, task)}
+      onDismiss={() => dismiss(item.id)}
+      onAsk={() => router.push({ pathname: '/chat', params: { ask: askFor(item, task.title) } })}
+    />
+  );
+  const heading = (label: string, color: string, count: number) => (
+    <View style={{ flexDirection: D.row, alignItems: 'center', gap: 8 }}>
+      <T w="bold" size={13} color={color}>{label}</T>
+      <T size={12} color={C.sub}>{count}</T>
+      <View style={{ flex: 1, height: 1, backgroundColor: C.line }} />
+    </View>
+  );
+  const sub = tx('ما يحتاج انتباهك من مهامك وبريدك، مرتّباً حسب الأهمية', 'What needs your attention in your tasks and email, most important first');
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScreenHeader title={tx('رادار غيث', 'Ghaith Radar')} />
+      {wide ? <ScreenHeader title={tx('الرادار', 'Radar')} /> : <TabTitle title={tx('الرادار', 'Radar')} sub={sub} />}
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 40, width: '100%', maxWidth: wide ? 880 : undefined, alignSelf: 'center' }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => (setRefreshing(true), await loadRadar(), setRefreshing(false))} tintColor={C.glow} />}
+        contentContainerStyle={{ paddingHorizontal: wide ? 16 : 20, paddingBottom: insets.bottom + (wide ? 40 : TAB_SPACE + 24), width: '100%', maxWidth: wide ? 880 : undefined, alignSelf: 'center' }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => (setRefreshing(true), await Promise.all([loadRadar(), loadInbox()]), setRefreshing(false))} tintColor={C.glow} />}
       >
-        {/* What the radar is, when it last looked, and "check now" for demos */}
-        <View style={{ borderRadius: R.big, overflow: 'hidden' }}>
-          <Gradient colors={[C.indigo, C.indigoHi]} angle="diagonal" />
-          <View style={{ padding: 18, gap: 12 }}>
-            <View style={{ flexDirection: D.row, alignItems: 'center', gap: 12 }}>
-              <View style={{ width: 46, height: 46, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name="radar" size={26} color={C.teal} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <T w="bold" size={TS.h2} color="#fff">{tx('ما يحتاج انتباهك', 'Your attention is needed')}</T>
-                <T size={TS.small} color="rgba(255,255,255,0.75)">
-                  {every
-                    ? tx(`يفحص غيث مهامك على الخادم ${everyLabel(every)}، حتى والتطبيق مغلق.`, `Ghaith checks your tasks on the server ${everyLabel(every).toLowerCase()}, even with the app closed.`)
-                    : tx('الفحص التلقائي متوقف. يمكنك الفحص يدوياً، أو تشغيله من الإعدادات.', 'Automatic checks are off. Check by hand, or turn them on in Settings.')}
-                </T>
-              </View>
-            </View>
-            <View style={{ flexDirection: D.row, alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-              <View style={{ flexDirection: D.row, alignItems: 'center', gap: 6 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: every && lastScan && now.getTime() - Date.parse(lastScan) < (every + 1.5) * 3600000 ? C.teal : C.amber }} />
-                <T size={TS.tiny} color="rgba(255,255,255,0.8)">{tx('آخر فحص تلقائي', 'Last automatic check')}: {agoLabel(lastScan, now.getTime())}</T>
-                <Pressable onPress={() => router.push('/settings')} hitSlop={8} accessibilityRole="link">
-                  <T size={TS.tiny} w="bold" color={C.teal}>· {tx('تغيير التوقيت', 'Change schedule')}</T>
-                </Pressable>
-              </View>
-              <PrimaryButton label={tx('افحص الآن', 'Check now')} icon="radar" onPress={check} busy={checking} style={{ minWidth: 140 }} />
-            </View>
-            {!!note && <T size={TS.small} color="#fff">{note}</T>}
+        {/* When the radar last looked, plainly, and "check now" */}
+        <View style={{ marginTop: 8, ...cardStyle, borderRadius: 18, paddingVertical: 12, paddingHorizontal: 14, flexDirection: D.row, alignItems: 'center', gap: 12 }}>
+          <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: fresh ? '#E2F5F5' : '#FFF4E0', alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: fresh ? C.tealDeep : C.amber }} />
           </View>
+          <View style={{ flex: 1, gap: 2 }}>
+            <T w="bold" size={13}>{every ? tx(`يعمل ${everyLabel(every)}`, `Runs ${everyLabel(every).toLowerCase()}`) : tx('الفحص التلقائي متوقف', 'Automatic checks are off')}</T>
+            <Pressable onPress={() => router.push('/settings')} hitSlop={6} accessibilityRole="link">
+              <T size={12} color={C.sub}>
+                {tx('آخر فحص', 'Last check')} {agoLabel(lastScan, now.getTime())} · <T size={12} w="bold" color={C.indigoHi}>{tx('تغيير', 'Change')}</T>
+              </T>
+            </Pressable>
+          </View>
+          <GhostButton label={checking ? '…' : tx('افحص الآن', 'Check now')} icon="radar" onPress={() => !checking && check()} style={{ flexGrow: 0, flexShrink: 0, flexBasis: 'auto', paddingHorizontal: 14, height: 38 }} />
+        </View>
+        {!!note && <T size={TS.small} color={C.sub} style={{ marginTop: 8, paddingHorizontal: 4 }}>{note}</T>}
+        <ErrorText text={err} />
+
+        <View style={{ marginTop: 14, flexDirection: D.row, flexWrap: 'wrap', gap: 8 }}>
+          <Chip label={`${tx('الكل', 'All')} ${n.all}`} on={filter === 'all'} onPress={() => setFilter('all')} />
+          <Chip label={`${tx('العمل', 'Work')} ${n.work}`} on={filter === 'work'} onPress={() => setFilter('work')} />
+          <Chip label={`${tx('الشخصي', 'Personal')} ${n.personal}`} on={filter === 'personal'} onPress={() => setFilter('personal')} />
+          {!!emails.length && <Chip label={`${tx('البريد', 'Email')} ${n.mail}`} icon="email-outline" on={filter === 'mail'} onPress={() => setFilter('mail')} />}
         </View>
 
-        {loaded && !list.length && (
-          <Card style={{ padding: 28, alignItems: 'center', marginTop: 20, gap: 6 }}>
+        {loaded && !groups.length && !shownMails.length && (
+          <View style={{ ...cardStyle, padding: 28, alignItems: 'center', marginTop: 20, gap: 6 }}>
             <Icon name="shield-check-outline" size={34} color={C.teal} />
-            <T w="bold" align="center">{tx('لا شيء يحتاج انتباهك الآن', 'Nothing needs your attention right now')}</T>
-            <T size={TS.small} color={C.sub} align="center">{tx('سينبّهك غيث هنا حين تقترب مهمة من موعدها، أو تتأخر، أو يطول انتظارك لأحد.', 'Ghaith will flag tasks here when a deadline gets close, slips, or you have been waiting on someone too long.')}</T>
-          </Card>
+            <T w="bold" align="center">{tx('لا شيء يحتاج انتباهك هنا', 'Nothing needs your attention here')}</T>
+            <T size={TS.small} color={C.sub} align="center">{tx('سينبّهك غيث هنا حين تقترب مهمة من موعدها، أو تتأخر، أو يطول انتظارك لأحد، أو يصله بريد منك.', 'Ghaith will flag tasks here when a deadline gets close, slips, you have waited on someone too long, or an email from you arrives.')}</T>
+          </View>
         )}
 
-        {groups.map((g) => (
-          <View key={g.sev} style={{ marginTop: 24, gap: 12 }}>
-            <View style={{ flexDirection: D.row, alignItems: 'center', gap: 8 }}>
-              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: SEVERITY_COLOR[g.sev] }} />
-              <T w="bold" size={TS.h2} color={g.sev === 'high' ? C.late : C.text}>{SEVERITY_LABEL[g.sev]()}</T>
-              <View style={{ paddingHorizontal: 8, borderRadius: R.pill, backgroundColor: tint(SEVERITY_COLOR[g.sev], 0.12) }}>
-                <T size={TS.tiny} w="bold" color={SEVERITY_COLOR[g.sev]}>{g.rows.length}</T>
-              </View>
-            </View>
-            {g.rows.map(({ item, task }) => (
-              <RadarFinding
-                key={item.id}
-                item={item}
-                task={task}
-                onOpen={() => setOpen(task)}
-                onDone={async () => (await complete(task.id), markActed(item.id))}
-                onPostpone={() => postpone(item, task)}
-                onDismiss={() => dismiss(item.id)}
-                onAsk={() => router.push({ pathname: '/chat', params: { ask: askFor(item, task.title) } })}
-              />
-            ))}
+        {groups.filter((g) => g.sev === 'high').map((g) => (
+          <View key={g.sev} style={{ marginTop: 22, gap: 12 }}>
+            {heading(SEVERITY_LABEL[g.sev](), C.lateText, g.rows.length)}
+            {g.rows.map(finding)}
           </View>
         ))}
 
-        <T size={TS.tiny} color={C.faint} align="center" style={{ marginTop: 24 }}>
+        {!!shownMails.length && (
+          <View style={{ marginTop: 22, gap: 12 }}>
+            {heading(tx('من بريدك', 'From your email'), C.glowText, shownMails.length)}
+            {shownMails.map((item) => (
+              <InboxEmail
+                key={item.id}
+                item={item}
+                onReview={() => setReview({ item, proposals: item.proposals })}
+                onDismiss={() => decide(item.id, 'dismissed')}
+                onRetry={() => retry(item)}
+                retrying={retrying === item.id}
+              />
+            ))}
+          </View>
+        )}
+
+        {groups.filter((g) => g.sev !== 'high').map((g) => (
+          <View key={g.sev} style={{ marginTop: 22, gap: 12 }}>
+            {heading(SEVERITY_LABEL[g.sev](), g.sev === 'medium' ? C.amberText : C.sub, g.rows.length)}
+            {g.rows.map(finding)}
+          </View>
+        ))}
+
+        <T size={TS.tiny} color={C.sub} align="center" style={{ marginTop: 24 }}>
           {tx('الرادار لا يُنجز ولا يؤجّل ولا يرسل شيئاً بنفسه: أنت من يقرر.', 'The radar never completes, postpones or sends anything by itself: you decide.')}
         </T>
       </ScrollView>
+      {!wide && <TabBar onMic={() => router.dismissTo({ pathname: '/', params: { rec: '1' } })} />}
       {open && <TaskSheet task={open} onClose={() => setOpen(null)} />}
+      {review && (
+        <ReviewView
+          said={saidOf(review.item)}
+          source="email"
+          proposals={review.proposals}
+          onSave={async (pl) => {
+            const e = await apply(pl, 'email');
+            if (!e) {
+              await decide(review.item.id, 'done');
+              setReview(null);
+            }
+            return e;
+          }}
+          onClose={() => setReview(null)}
+          onRetry={() => (setReview(null), retry(review.item))}
+        />
+      )}
     </View>
   );
 }

@@ -31,7 +31,7 @@ function parseWhen(v: unknown): string | null {
   return isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-const CATS = ['work', 'home', 'car', 'family', 'personal', 'money', 'other'];
+const CATS = ['work', 'meeting', 'email', 'report', 'home', 'car', 'family', 'personal', 'money', 'other'];
 const KINDS = ['todo', 'waiting', 'reply'];
 const REPEATS = ['daily', 'weekly', 'monthly', 'yearly'];
 const FIELDS = 'id,title,notes,kind,category,priority,person,due_at,remind_at,repeat,status,created_at';
@@ -52,7 +52,7 @@ const TOOL = {
             id: { type: ['string', 'null'], description: 'For update/complete/delete: the 8-character id of the existing task from the list. null for add.' },
             title: { type: ['string', 'null'], description: 'add: a short title that starts with the action and names the subject and the person/party. update: only if the title should change.' },
             kind: { type: ['string', 'null'], enum: [...KINDS, null], description: 'todo = something I must do. waiting = I asked someone and am waiting for their reply or delivery. reply = someone sent me something and I must reply.' },
-            category: { type: ['string', 'null'], enum: [...CATS, null] },
+            category: { type: ['string', 'null'], enum: [...CATS, null], description: 'WORK space: meeting (meetings, workshops, presentations for them), email (replying to or sending work emails/letters), report (reports, studies, documents to prepare), work (any other work task). PERSONAL space: car, home, family (children, relatives), money (bills, payments, bank), personal (health, private appointments, errands), other.' },
             priority: { type: ['string', 'null'], enum: ['high', 'normal', 'low', null] },
             person: { type: ['string', 'null'], description: 'The person or party involved' },
             due_at: { type: ['string', 'null'], description: 'Deadline, Dubai time, YYYY-MM-DDTHH:MM' },
@@ -111,7 +111,11 @@ Deciding what to do (most important):
 Fields for new tasks:
 - title: starts with the action, names the subject and the person/party. No words like "remind me" or "must".
 - kind: "I must do / prepare / finish" = todo. "I sent to X and I'm waiting / X will send me" = waiting. "X sent me / I must reply to" = reply.
-- category from context: manager, meeting, report, work email, a government party = work. Insurance / registration / service / fine = car. Bill / payment = money. When unclear and it is about an email or a colleague = work.
+- category: first decide the space, work or personal, then the most specific category in it.
+  • Work: anything for the job: the manager, colleagues, a department, a government party or entity, a project, a committee, a client. A meeting, workshop or presentation = meeting. Replying to, sending or following up an email or official letter = email. A report, study, document, statistics or file to prepare = report. Other work = work.
+  • Personal: their own life. Car insurance / registration / service / fine = car. House, maintenance, furniture, groceries = home. Children, school, relatives = family. Bills, payments, bank, rent = money. Health, private appointments, errands = personal.
+  • The user's known facts above may say how they classify something: follow them.
+  • When unclear and it is about an email or a colleague = work (email or work).
 - priority high only when they say urgent / important, or it is work due today or tomorrow.
 - Times (Dubai):
   • morning 09:00, noon 13:00, afternoon 16:00, evening 19:00, night 21:00.

@@ -6,7 +6,7 @@ import { AppState, Pressable, View } from 'react-native';
 import { D, tx } from '../lib/i18n';
 import { clearRadar, loadRadar, RadarItem, relevantDate, RISK_LABEL, SEVERITY_LABEL, unreadCount, useRadar, wording } from '../lib/radar';
 import { useStore } from '../lib/store';
-import { Task } from '../lib/tasks';
+import { SPACES, spaceOf, Task } from '../lib/tasks';
 import { useNow } from '../lib/useNow';
 import { C, R, tint, TS } from '../theme';
 import { Gradient, Icon, IconName, T } from '../ui';
@@ -155,6 +155,9 @@ export function RadarFinding({ item, task, onOpen, onDone, onPostpone, onDismiss
             <Icon name={RISK_ICON[item.risk_type]} size={13} color={color} />
             <T size={TS.tiny} w="bold" color={color}>{SEVERITY_LABEL[item.severity]()} · {RISK_LABEL[item.risk_type]()}</T>
           </View>
+          <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, backgroundColor: SPACES[spaceOf(task.category)].soft }}>
+            <T size={TS.tiny} w="bold" color={SPACES[spaceOf(task.category)].color}>{spaceOf(task.category) === 'work' ? tx('عمل', 'Work') : tx('شخصي', 'Personal')}</T>
+          </View>
           {!!when && (
             <View style={{ flexDirection: D.row, alignItems: 'center', gap: 4 }}>
               <Icon name="calendar-blank-outline" size={13} color={C.sub} />
@@ -180,7 +183,6 @@ export function RadarFinding({ item, task, onOpen, onDone, onPostpone, onDismiss
           <ActionButton tone="main" icon="creation" label={tx('اسأل غيث', 'Ask Ghaith')} onPress={onAsk} />
           <ActionButton icon="check" label={tx('أُنجزت', 'Done')} onPress={onDone} />
           <ActionButton icon="calendar-arrow-right" label={tx('أجّل للغد', 'Tomorrow')} onPress={onPostpone} />
-          <ActionButton icon="open-in-new" label={tx('فتح', 'Open')} onPress={onOpen} />
           <ActionButton icon="close" label={tx('تجاهل', 'Dismiss')} onPress={onDismiss} />
         </View>
       </View>

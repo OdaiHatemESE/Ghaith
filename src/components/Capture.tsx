@@ -6,7 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { D, getLang, tx } from '../lib/i18n';
 import { Draft, Fields, Proposal, Source } from '../lib/store';
-import { CATS, KINDS, shortWhen } from '../lib/tasks';
+import { rememberSpaces } from '../lib/space';
+import { catOf, KINDS, moveTo, shortWhen, Space, SPACES, spaceOf } from '../lib/tasks';
 import { useTick } from '../lib/useTick';
 import { useWide } from '../lib/useWide';
 import { C, liftMd, R, tint, TS } from '../theme';
@@ -201,7 +202,8 @@ export function ThinkingView() {
 }
 
 // ---------------------------------------------------------------- review
-type Item = { key: number; p: Proposal; keep: boolean };
+/** `moved`: the person moved a new task to the other space (work / personal); Ghaith learns from it on save */
+type Item = { key: number; p: Proposal; keep: boolean; moved?: boolean };
 
 const OPS: Record<Proposal['op'], { icon: IconName; color: string; label: () => string }> = {
   add: { icon: 'plus', color: C.indigo, label: () => tx('جديدة', 'New') },
@@ -228,11 +230,34 @@ function describe(p: Proposal): { sub: string; warn: string } {
   }
   if (p.op === 'complete') return { sub: tx('ستُعلَّم كمنجزة', 'Will be marked as done'), warn: unsure };
   if (p.op === 'delete') return { sub: tx('ستُحذف نهائياً', 'Will be deleted'), warn: unsure };
-  const sub = [KINDS[f.kind].label, remind ? (f.kind === 'waiting' && !f.due_at ? tx('متابعة ', 'follow up ') : '') + shortWhen(remind) : null, CATS[f.category].label, f.person].filter(Boolean).join(' · ');
+  const sub = [KINDS[f.kind].label, remind ? (f.kind === 'waiting' && !f.due_at ? tx('متابعة ', 'follow up ') : '') + shortWhen(remind) : null, catOf(f.category).label, f.person].filter(Boolean).join(' · ');
   return { sub, warn: remind ? '' : tx('دون موعد، اضغط لتحديد وقت التذكير', 'No time yet, tap to set a reminder') };
 }
 
-function ProposalRow({ item, last, onToggle, onRemove, onOpen }: { item: Item; last: boolean; onToggle: () => void; onRemove: () => void; onOpen?: () => void }) {
+/** Work or personal, for a new task: Ghaith picks, one tap moves it */
+function SpaceToggle({ value, onChange }: { value: Space; onChange: (s: Space) => void }) {
+  return (
+    <View accessibilityRole="radiogroup" style={{ flexDirection: D.row, backgroundColor: C.surfaceAlt, borderRadius: 10, padding: 3, gap: 2, alignSelf: D.rtl ? 'flex-end' : 'flex-start' }}>
+      {(['work', 'personal'] as Space[]).map((sp) => {
+        const on = value === sp;
+        return (
+          <Pressable
+            key={sp}
+            onPress={() => !on && onChange(sp)}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: on }}
+            hitSlop={4}
+            style={{ height: 26, paddingHorizontal: 11, borderRadius: 8, justifyContent: 'center', backgroundColor: on ? SPACES[sp].color : 'transparent' }}
+          >
+            <T size={TS.tiny} w="bold" color={on ? '#fff' : C.sub}>{sp === 'work' ? tx('عمل', 'Work') : tx('شخصي', 'Personal')}</T>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function ProposalRow({ item, last, onToggle, onRemove, onOpen, onSpace }: { item: Item; last: boolean; onToggle: () => void; onRemove: () => void; onOpen?: () => void; onSpace?: (s: Space) => void }) {
   const { p } = item;
   const f = result(p);
   const op = OPS[p.op];
@@ -256,6 +281,11 @@ function ProposalRow({ item, last, onToggle, onRemove, onOpen }: { item: Item; l
         </View>
         <T size={TS.small} color={p.op === 'update' ? C.glow : C.sub} numberOfLines={2}>{sub}</T>
         {!!warn && <T size={TS.tiny} color={C.amberText} numberOfLines={1}>{warn}</T>}
+        {p.op === 'add' && onSpace && (
+          <View style={{ marginTop: 8 }}>
+            <SpaceToggle value={spaceOf(f.category)} onChange={onSpace} />
+          </View>
+        )}
       </View>
       <Pressable onPress={onRemove} hitSlop={12} accessibilityLabel={tx('إزالة', 'Remove')}>
         <Icon name="close" size={18} color={C.faint} />
@@ -280,7 +310,10 @@ export function ReviewView({ said, source, proposals, onSave, onClose, onRetry }
     setBusy(true);
     const e = await onSave(kept.map((i) => i.p));
     setBusy(false);
-    if (e) setErr(e);
+    if (e) return setErr(e);
+    // What the person moved between work and personal becomes a fact Ghaith reads next time
+    const learned = kept.filter((i) => i.moved && i.p.op === 'add').map((i) => (i.p.op === 'add' ? i.p.task : null)).filter((t): t is Fields => !!t);
+    if (learned.length) rememberSpaces(learned);
   };
   const editing = edit && edit.key !== null ? items.find((i) => i.key === edit.key) ?? null : null;
   /** Puts an edited task back into its proposal: a new task stays new, an edit keeps only what differs */
@@ -341,6 +374,9 @@ export function ReviewView({ said, source, proposals, onSave, onClose, onRetry }
                   onToggle={() => setItems((l) => l.map((x) => (x.key === it.key ? { ...x, keep: !x.keep } : x)))}
                   onRemove={() => setItems((l) => l.filter((x) => x.key !== it.key))}
                   onOpen={it.p.op === 'add' || it.p.op === 'update' ? () => setEdit({ key: it.key }) : undefined}
+                  onSpace={(sp) =>
+                    setItems((l) => l.map((x) => (x.key === it.key && x.p.op === 'add' ? { ...x, moved: !x.moved, p: { op: 'add', task: { ...x.p.task, category: moveTo(x.p.task.category, sp) } } } : x)))
+                  }
                 />
               ))}
             </Card>

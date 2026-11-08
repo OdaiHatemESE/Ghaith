@@ -1,22 +1,20 @@
-import { router } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { countTasks, RecordView, ReviewView, ThinkingView, TypeSheet } from '../components/Capture';
-import { Logo } from '../components/Logo';
-import { Sunrise } from '../components/Sunrise';
+import { AttentionRow, cardStyle, goTab, Ring, SpaceSwitch, SpaceTag, TAB_SPACE, TabBar, useAttention } from '../components/Spaces';
 import { TaskRow } from '../components/TaskRow';
 import { TaskSheet } from '../components/TaskSheet';
 import { D, getLang, tx } from '../lib/i18n';
+import { inSpace, SpaceFilter, useSpace } from '../lib/space';
 import { Proposal, Source, useStore } from '../lib/store';
-import { clock, greeting, GROUP_ORDER, GroupKey, groupOf, GROUPS, longDate, sortTasks, startOfDay, Task } from '../lib/tasks';
+import { anchor, catOf, clock, dayDiff, dayLabel, greeting, GROUP_ORDER, GroupKey, groupOf, GROUPS, isLate, KINDS, longDate, sortTasks, Space, SPACES, spaceOf, startOfDay, Task } from '../lib/tasks';
 import { useNow } from '../lib/useNow';
 import { useDictation } from '../lib/voice';
 import { useWide } from '../lib/useWide';
 import { C, F, GRADIENT, lift, R, tint, TS } from '../theme';
-import { InboxSummary } from '../components/Inbox';
-import { RadarSummary, useRadarItems } from '../components/Radar';
-import { Card, Gradient, Icon, IconButton, IconName, Num, PrimaryButton, SectionHead, T } from '../ui';
+import { Check, Gradient, Icon, Num, PrimaryButton, T } from '../ui';
 
 type Flow =
   | { step: 'idle' }
@@ -37,47 +35,59 @@ function untilLabel(at: Date, now: Date): string {
   return tx(`الساعة ${clock(at)}`, `at ${clock(at)}`);
 }
 
+/** Home: today at a glance (work, personal or both), what needs attention, and today's plan */
 export default function Home() {
   const insets = useSafeAreaInsets();
   const { name, tasks, complete, reopen, capture, apply } = useStore();
   const now = useNow();
   const dict = useDictation();
   const wide = useWide();
-  const radarUnread = useRadarItems().unread;
+  const space = useSpace();
+  const attention = useAttention();
+  const { rec } = useLocalSearchParams<{ rec?: string }>();
   const [flow, setFlow] = useState<Flow>({ step: 'idle' });
   const [captureErr, setCaptureErr] = useState('');
   const [toast, setToast] = useState('');
   const [open, setOpen] = useState<Task | null | 'new'>(null);
 
   const dayStart = startOfDay(now).getTime();
-  const openTasks = useMemo(() => tasks.filter((t) => t.status === 'open'), [tasks]);
-  const doneToday = useMemo(() => tasks.filter((t) => t.status === 'done' && t.done_at && new Date(t.done_at).getTime() >= dayStart), [tasks, dayStart]);
-  // Every open task, by when it is due
-  const groups = useMemo(() => {
-    const m = new Map<GroupKey, Task[]>();
-    for (const t of sortTasks(openTasks)) {
-      const g = groupOf(t, now);
-      m.set(g, [...(m.get(g) ?? []), t]);
-    }
-    return GROUP_ORDER.filter((g) => m.has(g) || (g === 'today' && doneToday.length)).map((g) => ({ key: g, list: [...(m.get(g) ?? []), ...(g === 'today' ? doneToday.slice(0, 5) : [])] }));
-  }, [openTasks, doneToday, now]);
-  const today = openTasks.filter((t) => ['late', 'today'].includes(groupOf(t, now)));
+  const allOpen = useMemo(() => tasks.filter((t) => t.status === 'open'), [tasks]);
+  const counts = useMemo(() => {
+    const c: Record<SpaceFilter, number> = { all: allOpen.length, work: 0, personal: 0 };
+    for (const t of allOpen) c[spaceOf(t.category)]++;
+    return c;
+  }, [allOpen]);
+  const openTasks = useMemo(() => allOpen.filter((t) => inSpace(t.category, space)), [allOpen, space]);
+  const doneToday = useMemo(
+    () => tasks.filter((t) => t.status === 'done' && t.done_at && new Date(t.done_at).getTime() >= dayStart && inSpace(t.category, space)),
+    [tasks, dayStart, space],
+  );
+  const today = useMemo(() => sortTasks(openTasks.filter((t) => ['late', 'today'].includes(groupOf(t, now)))), [openTasks, now]);
+  // Today's plan: overdue first, then today's by time, then what was finished today
+  const plan = useMemo(() => {
+    const at = (t: Task) => anchor(t) ?? '9999';
+    const lateList = today.filter((t) => groupOf(t, now) === 'late');
+    const todayList = today.filter((t) => groupOf(t, now) === 'today').sort((a, b) => (at(a) < at(b) ? -1 : 1));
+    return [...lateList, ...todayList, ...doneToday.slice(0, 4)];
+  }, [today, doneToday, now]);
+  const comingUp = useMemo(() => sortTasks(openTasks.filter((t) => !['late', 'today'].includes(groupOf(t, now)))).slice(0, 4), [openTasks, now]);
+  /** Desktop columns: one space's open tasks under time headings */
+  const byGroup = (sp: Space) =>
+    GROUP_ORDER.map((g) => ({ key: g as GroupKey, list: sortTasks(allOpen.filter((t) => spaceOf(t.category) === sp && groupOf(t, now) === g)) })).filter((g) => g.list.length);
   const late = openTasks.filter((t) => groupOf(t, now) === 'late').length;
   const waiting = openTasks.filter((t) => t.kind === 'waiting').length;
   const replies = openTasks.filter((t) => t.kind === 'reply').length;
   const total = today.length + doneToday.length;
-  const firstTimed = today
-    .map((t) => t.due_at ?? t.remind_at)
-    .filter((a): a is string => !!a && new Date(a) > now)
-    .sort()[0];
+  const pct = total ? Math.round((doneToday.length / total) * 100) : 0;
+  const hello = `${greeting(now)}${name ? tx(`، ${name}`, `, ${name}`) : ''}`;
 
   // The next reminder in the coming three hours
   const upcoming = useMemo(() => {
-    const soon = openTasks
+    const soon = allOpen
       .filter((t) => t.remind_at && new Date(t.remind_at) > now && new Date(t.remind_at).getTime() - now.getTime() < 3 * 3600000)
       .sort((a, b) => (a.remind_at! < b.remind_at! ? -1 : 1));
     return soon[0] ?? null;
-  }, [openTasks, now]);
+  }, [allOpen, now]);
 
   // ---------- capture ----------
   const startRecording = () => {
@@ -103,6 +113,14 @@ export default function Home() {
     }
     process(text, 'voice');
   };
+  // The mic on another tab's bar brings the person here with ?rec=1
+  useEffect(() => {
+    if (rec !== '1') return;
+    router.setParams({ rec: undefined });
+    const t = setTimeout(startRecording, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rec]);
   const applyAll = async (list: Proposal[], source: Source) => {
     const e = await apply(list, source);
     if (e) return e;
@@ -113,166 +131,104 @@ export default function Home() {
     return null;
   };
 
-  const headline = late
-    ? tx('لنبدأ بالمهام المتأخرة', 'Let’s clear what’s overdue first')
-    : total
-      ? tx('لنجعل يومك مركّزاً', 'Let’s make it a focused day')
-      : tx('يومك هادئ، استمتع به', 'A calm day, enjoy it');
-
   // ---------- pieces shared by the phone and the desktop layouts ----------
-  const greetingBlock = (
-    <View>
-      <T size={TS.small} color={C.sub}>
-        {greeting(now)}
-        {name ? tx(` يا ${name}`, `, ${name}`) : ''}
+  const errorBox = !!captureErr && (
+    <View style={{ marginTop: 12, flexDirection: D.row, alignItems: 'center', gap: 8, backgroundColor: tint(C.late, 0.08), borderRadius: 14, padding: 10 }}>
+      <Icon name="alert-circle-outline" size={18} color={C.lateText} />
+      <T size={TS.small} color={C.lateText} style={{ flex: 1 }}>
+        {captureErr}
       </T>
-      <T w="bold" size={wide ? TS.display : TS.h1} style={{ lineHeight: wide ? 42 : 36 }}>
-        {headline}
-      </T>
-    </View>
-  );
-
-  const hero = (
-    <Pressable
-      onPress={() => router.push('/tasks')}
-      style={{
-        height: wide ? 196 : 160,
-        borderRadius: R.big,
-        overflow: 'hidden',
-        backgroundColor: C.indigo,
-        shadowColor: C.indigo,
-        shadowOpacity: 0.28,
-        shadowRadius: 26,
-        shadowOffset: { width: 0, height: 14 },
-        elevation: 8,
-        ...(wide ? { flex: 1.25 } : { marginTop: 16 }),
-      }}
-    >
-      <Sunrise />
-      <View style={{ position: 'absolute', top: 16, [D.end]: 18, backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: R.pill, paddingHorizontal: 10, paddingVertical: 2 }}>
-        <T w="medium" size={TS.tiny} color="#fff">
-          {longDate(now)}
-        </T>
-      </View>
-      <View style={{ padding: wide ? 22 : 18, paddingTop: wide ? 18 : 14 }}>
-        <T size={TS.small} color="rgba(255,255,255,0.8)">
-          {tx('مهام اليوم', 'Today’s tasks')}
-        </T>
-        <View style={{ flexDirection: D.row, alignItems: 'baseline', gap: 6 }}>
-          <Num size={wide ? 52 : 44} color="#fff">
-            {total}
-          </Num>
-          <T w="medium" size={TS.body} color="rgba(255,255,255,0.9)">
-            {getLang() === 'en' ? (total === 1 ? 'task' : 'tasks') : total === 1 ? 'مهمة' : total === 2 ? 'مهمتان' : 'مهام'}
-          </T>
-        </View>
-        <View
-          style={{
-            height: 7,
-            width: 190,
-            borderRadius: 9,
-            backgroundColor: 'rgba(255,255,255,0.18)',
-            overflow: 'hidden',
-            marginTop: 6,
-            flexDirection: D.row,
-            alignSelf: D.rtl ? 'flex-end' : 'flex-start',
-          }}
-        >
-          <View style={{ height: '100%', width: `${total ? Math.max(4, (doneToday.length / total) * 100) : 0}%`, borderRadius: 9, backgroundColor: C.teal }} />
-        </View>
-        <T size={TS.tiny} color="rgba(255,255,255,0.85)" style={{ marginTop: 6 }}>
-          {total
-            ? tx(`أنجزت ${doneToday.length} · متبقٍّ ${today.length}`, `${doneToday.length} done · ${today.length} left`) +
-              (firstTimed ? tx(` · أقربها ${clock(new Date(firstTimed))}`, ` · next at ${clock(new Date(firstTimed))}`) : '')
-            : tx('خطوات صغيرة اليوم، غدٌ أوضح', 'Small steps today, a clearer tomorrow')}
-        </T>
-      </View>
-    </Pressable>
-  );
-
-  const stats = (
-    <View style={{ flexDirection: D.row, gap: wide ? 14 : 10, ...(wide ? { flex: 1 } : { marginTop: 12 }) }}>
-      <Stat tall={wide} n={late} label={tx('متأخرة', 'Overdue')} icon="alert-circle-outline" color={C.late} onPress={() => router.push('/tasks')} />
-      <Stat tall={wide} n={waiting} label={tx('بانتظار رد', 'Waiting on')} icon="timer-sand" color={C.glow} onPress={() => router.push({ pathname: '/tasks', params: { kind: 'waiting' } })} />
-      <Stat tall={wide} n={replies} label={tx('بحاجة إلى رد', 'Need reply')} icon="reply" color={C.tealDeep} onPress={() => router.push({ pathname: '/tasks', params: { kind: 'reply' } })} />
+      <Pressable onPress={() => setCaptureErr('')} hitSlop={10}>
+        <Icon name="close" size={16} color={C.lateText} />
+      </Pressable>
     </View>
   );
 
   const reminder = upcoming && (
-    <Pressable
-      onPress={() => setOpen(upcoming)}
-      style={{
-        marginTop: 12,
-        backgroundColor: C.surface,
-        borderRadius: R.pill,
-        paddingVertical: 8,
-        paddingHorizontal: 8,
-        [D.rtl ? 'paddingLeft' : 'paddingRight']: 16,
-        flexDirection: D.row,
-        alignItems: 'center',
-        gap: 10,
-        ...lift,
-      }}
-    >
-      <View style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-        <Gradient colors={['#9B83FF', C.glow]} angle="diagonal" />
-        <Icon name="bell-outline" size={17} color="#fff" />
+    <Pressable onPress={() => setOpen(upcoming)} style={{ marginTop: 12, ...cardStyle, borderRadius: R.pill, paddingVertical: 8, paddingHorizontal: 8, [D.rtl ? 'paddingLeft' : 'paddingRight']: 16, flexDirection: D.row, alignItems: 'center', gap: 10 }}>
+      <View style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFEBFF' }}>
+        <Icon name="bell-outline" size={17} color={C.glowText} />
       </View>
       <View style={{ flex: 1 }}>
-        <T w="medium" size={TS.tiny} color={C.glow}>
+        <T w="medium" size={TS.tiny} color={C.glowText}>
           {tx('تذكير', 'Reminder')} · {untilLabel(new Date(upcoming.remind_at!), now)}
         </T>
         <T size={TS.small} numberOfLines={1}>
           {upcoming.title}
         </T>
       </View>
-      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.glow }} />
     </Pressable>
   );
 
-  const errorBox = !!captureErr && (
-    <View style={{ marginTop: 12, flexDirection: D.row, alignItems: 'center', gap: 8, backgroundColor: tint(C.late, 0.08), borderRadius: 14, padding: 10 }}>
-      <Icon name="alert-circle-outline" size={18} color={C.late} />
-      <T size={TS.small} color={C.late} style={{ flex: 1 }}>
-        {captureErr}
-      </T>
-      <Pressable onPress={() => setCaptureErr('')} hitSlop={10}>
-        <Icon name="close" size={16} color={C.late} />
-      </Pressable>
+  const toggle = (t: Task) => (t.status === 'done' ? reopen(t.id) : complete(t.id));
+  const accent = space === 'personal' ? SPACES.personal.color : SPACES.work.color;
+  const next = plan.find((t) => t.status === 'open' && anchor(t) && new Date(anchor(t)!) > now);
+  const todayCard = (
+    <View style={{ ...cardStyle, borderRadius: 22, padding: 18, ...(wide ? { flex: 1.3 } : { marginTop: 16 }) }}>
+      <View style={{ flexDirection: D.row, alignItems: 'center', gap: 16 }}>
+        <Ring pct={pct} color={accent} />
+        <View style={{ flex: 1, gap: 3 }}>
+          <T size={13} color={C.sub}>{space === 'work' ? tx('العمل اليوم', 'Work today') : space === 'personal' ? tx('الشخصي اليوم', 'Personal today') : tx('اليوم', 'Today')}</T>
+          <T w="bold" size={20}>
+            {total ? tx(`${countTasks(total)} · أنجزت ${doneToday.length}`, `${countTasks(total)} · ${doneToday.length} done`) : tx('يومك هادئ', 'A calm day')}
+          </T>
+          <T size={13} color={C.sub} numberOfLines={1}>
+            {next ? tx(`التالي: ${next.title}، ${clock(new Date(anchor(next)!))}`, `Next: ${next.title}, ${clock(new Date(anchor(next)!))}`) : late ? tx('ابدأ بالمتأخر أولاً', 'Start with what is overdue') : tx('لا شيء بموعد متبقٍّ اليوم', 'Nothing timed left today')}
+          </T>
+        </View>
+      </View>
+      <View style={{ marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: C.line, flexDirection: D.row }}>
+        <Metric n={late} label={tx('متأخرة', 'Overdue')} color={C.lateText} onPress={() => goTab('/tasks', '/')} />
+        <Metric n={waiting} label={tx('بانتظار رد', 'Waiting on')} color={C.glowText} onPress={() => router.push({ pathname: '/tasks', params: { kind: 'waiting' } })} divider />
+        <Metric n={replies} label={tx('بحاجة إلى رد', 'Need reply')} color={C.tealText} onPress={() => router.push({ pathname: '/tasks', params: { kind: 'reply' } })} divider />
+      </View>
     </View>
   );
 
-  const groupList = (
-    <>
-      {groups.map((g, gi) => (
-        <View key={g.key}>
-          <SectionHead
-            title={`${GROUPS[g.key].label}  ${g.list.filter((t) => t.status === 'open').length}`}
-            color={g.key === 'late' ? C.late : C.text}
-            action={gi === 0 && !wide ? tx('عرض الكل', 'See all') : undefined}
-            onAction={() => router.push('/tasks')}
-          />
-          <Card>
-            {g.list.map((t, i) => (
-              <TaskRow key={t.id} task={t} now={now} last={i === g.list.length - 1} onToggle={() => (t.status === 'done' ? reopen(t.id) : complete(t.id))} onOpen={() => setOpen(t)} />
-            ))}
-          </Card>
+  const attentionBlock = !!attention.length && (
+    <View>
+      <View style={{ marginTop: 24, marginBottom: 10, flexDirection: D.row, alignItems: 'center', justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: D.row, alignItems: 'center', gap: 8 }}>
+          <T w="bold" size={17}>{tx('يحتاج انتباهك', 'Needs your attention')}</T>
+          <View style={{ paddingHorizontal: 8, borderRadius: 10, backgroundColor: C.lateText }}>
+            <T size={12} w="bold" color="#fff">{attention.length}</T>
+          </View>
         </View>
-      ))}
-      {!groups.length && (
-        <Card style={{ padding: 24, alignItems: 'center', marginTop: 28 }}>
+        <Pressable onPress={() => goTab('/radar', '/')} hitSlop={8} accessibilityRole="link">
+          <T size={13} w="bold" color={C.indigoHi}>{tx('عرض الكل', 'See all')}</T>
+        </Pressable>
+      </View>
+      <View style={{ ...cardStyle, overflow: 'hidden' }}>
+        {attention.slice(0, 3).map((a, i, all) => (
+          <AttentionRow key={a.key} a={a} last={i === all.length - 1} onPress={() => goTab('/radar', '/')} />
+        ))}
+      </View>
+    </View>
+  );
+
+  const planBlock = (
+    <View>
+      <View style={{ marginTop: 24, marginBottom: 10, flexDirection: D.row, alignItems: 'center', justifyContent: 'space-between' }}>
+        <T w="bold" size={17}>{plan.length ? tx('جدول اليوم', 'Today’s plan') : tx('القادم', 'Coming up')}</T>
+        <Pressable onPress={() => goTab('/tasks', '/')} hitSlop={8} accessibilityRole="link">
+          <T size={13} w="bold" color={C.indigoHi}>{tx('كل المهام', 'All tasks')}</T>
+        </Pressable>
+      </View>
+      <View style={{ gap: 8 }}>
+        {(plan.length ? plan : comingUp).map((t) => (
+          <PlanRow key={t.id} task={t} now={now} onOpen={() => setOpen(t)} onToggle={() => toggle(t)} />
+        ))}
+      </View>
+      {!plan.length && !comingUp.length && (
+        <View style={{ ...cardStyle, padding: 24, alignItems: 'center', gap: 4 }}>
           <Icon name="weather-sunny" size={28} color={C.teal} />
-          <T w="semibold" align="center" style={{ marginTop: 6 }}>
-            {tx('لا توجد مهام بعد', 'No tasks yet')}
-          </T>
+          <T w="bold" align="center">{tx('لا توجد مهام هنا', 'No tasks here')}</T>
           <T size={TS.small} color={C.sub} align="center">
-            {wide
-              ? tx('اكتب في الأعلى كل ما عليك دفعة واحدة، وغيث يرتّبه.', 'Write everything above in one go, and Ghaith will organise it.')
-              : tx('اضغط الميكروفون واذكر كل ما عليك دفعة واحدة، وغيث يرتّبه.', 'Tap the mic and say everything at once. Ghaith will organise it.')}
+            {wide ? tx('اكتب في الأعلى كل ما عليك دفعة واحدة، وغيث يرتّبه.', 'Write everything above in one go, and Ghaith will organise it.') : tx('اضغط الميكروفون واذكر كل ما عليك دفعة واحدة، وغيث يرتّبه.', 'Tap the mic and say everything at once. Ghaith will organise it.')}
           </T>
-        </Card>
+        </View>
       )}
-    </>
+    </View>
   );
 
   const overlays = (
@@ -308,99 +264,62 @@ export default function Home() {
 
   // ---------- desktop ----------
   if (wide) {
-    const mine = (t: Task) => t.kind !== 'waiting';
-    const todayMine = sortTasks(openTasks.filter((t) => mine(t) && ['late', 'today'].includes(groupOf(t, now))));
-    const waitingAll = sortTasks(openTasks.filter((t) => t.kind === 'waiting'));
-    const nextMine = sortTasks(openTasks.filter((t) => mine(t) && !['late', 'today'].includes(groupOf(t, now))));
-    const nextGroups = GROUP_ORDER.filter((g) => g !== 'late' && g !== 'today')
-      .map((g) => ({ key: g, list: nextMine.filter((t) => groupOf(t, now) === g) }))
-      .filter((g) => g.list.length);
-    const row = (t: Task, i: number, all: Task[], extra?: string) => (
-      <TaskRow key={t.id} task={t} now={now} last={i === all.length - 1} note={extra} onToggle={() => (t.status === 'done' ? reopen(t.id) : complete(t.id))} onOpen={() => setOpen(t)} />
-    );
-    /** "منذ 3 أيام" since a waiting task was created */
-    const since = (t: Task) => {
-      const d = Math.floor((now.getTime() - new Date(t.created_at).getTime()) / 86400000);
-      if (getLang() === 'en') return d <= 0 ? 'since today' : d === 1 ? 'for 1 day' : `for ${d} days`;
-      return d <= 0 ? 'منذ اليوم' : d === 1 ? 'منذ يوم' : d === 2 ? 'منذ يومين' : d <= 10 ? `منذ ${d} أيام` : `منذ ${d} يوماً`;
-    };
+    const columns = (['work', 'personal'] as Space[]).filter((sp) => space === 'all' || space === sp);
     return (
       <View style={{ flex: 1, backgroundColor: C.bg }}>
         <ScrollView contentContainerStyle={{ paddingHorizontal: 36, paddingTop: 30, paddingBottom: 48 }}>
           <View style={{ width: '100%', maxWidth: 1320, alignSelf: 'center' }}>
             <View style={{ flexDirection: D.row, alignItems: 'flex-end', justifyContent: 'space-between', gap: 16 }}>
-              {greetingBlock}
+              <View style={{ gap: 4 }}>
+                <T size={14} color={C.sub}>{longDate(now)}</T>
+                <T w="bold" size={30} color={C.indigo} style={{ lineHeight: 42 }}>{hello}</T>
+              </View>
               <Pressable
                 onPress={() => setOpen('new')}
-                style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({
-                  flexDirection: D.row,
-                  alignItems: 'center',
-                  gap: 6,
-                  paddingHorizontal: 16,
-                  height: 42,
-                  borderRadius: R.pill,
-                  borderWidth: 1.5,
-                  borderColor: C.lineHi,
-                  backgroundColor: hovered || pressed ? C.surfaceAlt : C.surface,
-                })}
+                style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({ flexDirection: D.row, alignItems: 'center', gap: 6, paddingHorizontal: 16, height: 42, borderRadius: R.pill, borderWidth: 1.5, borderColor: C.lineHi, backgroundColor: hovered || pressed ? C.surfaceAlt : C.surface })}
               >
                 <Icon name="plus" size={18} color={C.indigo} />
-                <T w="medium" color={C.indigo}>
-                  {tx('مهمة يدوياً', 'Add manually')}
-                </T>
+                <T w="medium" color={C.indigo}>{tx('مهمة يدوياً', 'Add manually')}</T>
               </Pressable>
             </View>
 
             <CaptureBar onSubmit={(t) => process(t, 'text')} onMic={startRecording} onEmail={() => setFlow({ step: 'typing', mode: 'email' })} canMic={dict.state !== 'unsupported'} />
             {errorBox}
-
-            <View style={{ flexDirection: D.row, gap: 16, marginTop: 20 }}>
-              {hero}
-              {stats}
-            </View>
-            <RadarSummary style={{ marginTop: 16 }} />
-            <InboxSummary style={{ marginTop: 16 }} />
             {reminder}
 
-            {/* Board: what is on me today · what I'm waiting for from others · what's coming */}
-            <View style={{ flexDirection: D.row, gap: 20, alignItems: 'flex-start', marginTop: 28 }}>
-              <Column
-                title={tx('عليّ اليوم', 'On me today')}
-                hint={tx('المتأخر وما موعده اليوم', 'Overdue and due today')}
-                icon="target"
-                color={C.indigo}
-                count={todayMine.length}
-                empty={tx('لا شيء عليك اليوم.', 'Nothing on you today.')}
-              >
-                <Card>{[...todayMine, ...doneToday.filter(mine).slice(0, 5)].map((t, i, all) => row(t, i, all))}</Card>
-              </Column>
-              <Column
-                title={tx('بانتظار الآخرين', 'Waiting on others')}
-                hint={tx('ما طلبته من غيرك ولم يصلك بعد', 'What you asked others for')}
-                icon="timer-sand"
-                color={C.glow}
-                count={waitingAll.length}
-                empty={tx('لا تنتظر أحداً الآن.', 'You are not waiting on anyone.')}
-              >
-                <Card>{waitingAll.map((t, i, all) => row(t, i, all, since(t)))}</Card>
-              </Column>
-              <Column
-                title={tx('القادم', 'Coming up')}
-                hint={tx('غداً وما بعده', 'Tomorrow and later')}
-                icon="calendar-month-outline"
-                color={C.tealDeep}
-                count={nextMine.length}
-                empty={tx('لا شيء قادم بعد.', 'Nothing coming up yet.')}
-              >
-                {nextGroups.map((g, gi) => (
-                  <View key={g.key} style={{ marginTop: gi ? 16 : 0 }}>
-                    <T w="semibold" size={TS.small} color={C.sub} style={{ marginBottom: 6, paddingHorizontal: 4 }}>
-                      {GROUPS[g.key].label}
-                    </T>
-                    <Card>{g.list.map((t, i, all) => row(t, i, all))}</Card>
-                  </View>
+            <View style={{ flexDirection: D.row, gap: 16, marginTop: 20, alignItems: 'stretch' }}>
+              {todayCard}
+              <View style={{ flex: 1, justifyContent: 'center', gap: 10 }}>
+                <T size={13} w="bold" color={C.sub}>{tx('اعرض', 'Show')}</T>
+                <SpaceSwitch counts={counts} />
+              </View>
+            </View>
+
+            <View style={{ flexDirection: D.row, gap: 18, alignItems: 'flex-start', marginTop: 24 }}>
+              <View style={{ flex: 2.2, flexDirection: D.row, gap: 18, alignItems: 'flex-start' }}>
+                {columns.map((sp) => (
+                  <SpaceColumn key={sp} space={sp} tasks={byGroup(sp)} doneToday={doneToday.filter((t) => spaceOf(t.category) === sp)} now={now} onOpen={(t) => setOpen(t)} onToggle={toggle} />
                 ))}
-              </Column>
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={{ flexDirection: D.row, alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <T w="bold" size={TS.h2} style={{ flex: 1 }}>{tx('يحتاج انتباهك', 'Needs your attention')}</T>
+                  <Pressable onPress={() => router.push('/radar')} hitSlop={8} accessibilityRole="link">
+                    <T size={13} w="bold" color={C.indigoHi}>{tx('الرادار', 'Radar')}</T>
+                  </Pressable>
+                </View>
+                <View style={{ ...cardStyle, overflow: 'hidden' }}>
+                  {attention.slice(0, 6).map((a, i, all) => (
+                    <AttentionRow key={a.key} a={a} last={i === all.length - 1} onPress={() => router.push('/radar')} />
+                  ))}
+                  {!attention.length && (
+                    <View style={{ padding: 20, alignItems: 'center', gap: 6 }}>
+                      <Icon name="shield-check-outline" size={26} color={C.teal} />
+                      <T size={TS.small} color={C.sub} align="center">{tx('لا شيء يحتاج انتباهك الآن.', 'Nothing needs your attention now.')}</T>
+                    </View>
+                  )}
+                </View>
+              </View>
             </View>
           </View>
         </ScrollView>
@@ -412,79 +331,111 @@ export default function Home() {
   // ---------- phone ----------
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 12, paddingHorizontal: 16, paddingBottom: insets.bottom + 130 }}>
-        <View style={{ flexDirection: D.row, alignItems: 'center', justifyContent: 'space-between' }}>
-          <Logo size={32} />
-          <View style={{ flexDirection: D.row, gap: 8 }}>
-            <View>
-              <IconButton icon="radar" label={tx('رادار غيث', 'Ghaith Radar')} onPress={() => router.push('/radar')} />
-              {radarUnread > 0 && <View pointerEvents="none" style={{ position: 'absolute', top: 6, [D.end]: 6, width: 10, height: 10, borderRadius: 5, backgroundColor: C.late, borderWidth: 2, borderColor: C.bg }} />}
-            </View>
-            <IconButton icon="message-text-outline" label={tx('محادثة غيث', 'Chat with Ghaith')} onPress={() => router.push('/chat')} />
-            <IconButton icon="format-list-checks" label={tx('كل المهام', 'All tasks')} onPress={() => router.push('/tasks')} />
-            <IconButton icon="tune-variant" label={tx('الإعدادات', 'Settings')} onPress={() => router.push('/settings')} />
+      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 14, paddingHorizontal: 20, paddingBottom: insets.bottom + TAB_SPACE + 24 }}>
+        <View style={{ flexDirection: D.row, alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <T size={13} color={C.sub}>{longDate(now)}</T>
+            <T w="bold" size={24} color={C.indigo} style={{ lineHeight: 34 }} numberOfLines={1}>{hello}</T>
           </View>
-        </View>
-        <View style={{ marginTop: 16 }}>{greetingBlock}</View>
-        {hero}
-        {stats}
-        <RadarSummary />
-        <InboxSummary style={{ marginTop: 16 }} />
-        {reminder}
-        {errorBox}
-        {groupList}
-      </ScrollView>
-
-      {/* Capture dock */}
-      <View pointerEvents="box-none" style={{ position: 'absolute', left: 16, right: 16, bottom: insets.bottom + 16 }}>
-        <View
-          style={{
-            height: 74,
-            borderRadius: 30,
-            backgroundColor: 'rgba(255,255,255,0.96)',
-            flexDirection: D.row,
-            alignItems: 'center',
-            justifyContent: 'space-around',
-            shadowColor: C.indigo,
-            shadowOpacity: 0.16,
-            shadowRadius: 30,
-            shadowOffset: { width: 0, height: 14 },
-            elevation: 10,
-            borderWidth: 1,
-            borderColor: '#fff',
-          }}
-        >
-          <DockButton icon="format-text" label={tx('كتابة', 'Type')} onPress={() => setFlow({ step: 'typing', mode: 'text' })} />
-          <Pressable onPress={startRecording} accessibilityRole="button" accessibilityLabel={tx('تسجيل صوتي', 'Record')} style={{ alignItems: 'center', width: 96 }}>
-            <View
-              style={{
-                width: 72,
-                height: 72,
-                borderRadius: 36,
-                marginTop: -34,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderWidth: 6,
-                borderColor: '#fff',
-                shadowColor: C.glow,
-                shadowOpacity: 0.5,
-                shadowRadius: 18,
-                shadowOffset: { width: 0, height: 10 },
-                elevation: 12,
-                backgroundColor: C.indigoHi,
-              }}
-            >
-              <Gradient colors={['#3B3FB8', GRADIENT[1]]} angle="diagonal" radius={36} />
-              <Icon name="microphone" size={30} color="#fff" />
-            </View>
-            <T w="medium" size={TS.tiny} color={C.indigo} align="center" style={{ marginTop: 2 }}>
-              {tx('تسجيل', 'Record')}
-            </T>
+          <Pressable onPress={() => router.push('/settings')} accessibilityRole="button" accessibilityLabel={tx('الإعدادات والحساب', 'Settings and account')} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.indigo, alignItems: 'center', justifyContent: 'center' }}>
+            {name ? <T w="bold" size={17} color="#fff">{name.trim().slice(0, 1)}</T> : <Icon name="account-outline" size={22} color="#fff" />}
           </Pressable>
-          <DockButton icon="email-outline" label={tx('بريد', 'Email')} onPress={() => setFlow({ step: 'typing', mode: 'email' })} />
         </View>
-      </View>
+
+        <SpaceSwitch counts={counts} style={{ marginTop: 18 }} />
+
+        <View style={{ marginTop: 12, flexDirection: D.row, gap: 8 }}>
+          <Pressable onPress={() => setFlow({ step: 'typing', mode: 'text' })} accessibilityRole="button" style={{ flex: 1, height: 46, ...cardStyle, borderRadius: 23, flexDirection: D.row, alignItems: 'center', gap: 8, paddingHorizontal: 16 }}>
+            <Icon name="pencil-outline" size={18} color={C.sub} />
+            <T size={14} color={C.sub} numberOfLines={1} style={{ flex: 1 }}>{tx('اكتب لغيث…', 'Write to Ghaith…')}</T>
+          </Pressable>
+          <Pressable onPress={() => setFlow({ step: 'typing', mode: 'email' })} accessibilityRole="button" accessibilityLabel={tx('لصق بريد إلكتروني', 'Paste an email')} style={{ width: 46, height: 46, ...cardStyle, borderRadius: 23, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="email-outline" size={20} color={C.indigo} />
+          </Pressable>
+        </View>
+        {errorBox}
+
+        {todayCard}
+        {reminder}
+        {attentionBlock}
+        {planBlock}
+      </ScrollView>
+      <TabBar onMic={startRecording} />
       {overlays}
+    </View>
+  );
+}
+
+/** One of the three figures under today's progress */
+function Metric({ n, label, color, onPress, divider }: { n: number; label: string; color: string; onPress: () => void; divider?: boolean }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" style={{ flex: 1, gap: 2, alignItems: D.rtl ? 'flex-end' : 'flex-start', ...(divider ? { [D.rtl ? 'borderRightWidth' : 'borderLeftWidth']: 1, borderColor: C.line, [D.rtl ? 'paddingRight' : 'paddingLeft']: 12 } : null) }}>
+      <Num size={22} color={n ? color : C.faint}>{n}</Num>
+      <T size={12} color={C.sub} numberOfLines={1}>{label}</T>
+    </Pressable>
+  );
+}
+
+/** Today's plan: the time on the side, then the task in its space's colour */
+function PlanRow({ task, now, onOpen, onToggle }: { task: Task; now: Date; onOpen: () => void; onToggle: () => void }) {
+  const done = task.status === 'done';
+  const at = anchor(task);
+  const lateNow = !done && isLate(task, now);
+  const sp = SPACES[spaceOf(task.category)];
+  const today = at && dayDiff(new Date(at), now) === 0;
+  const meta = [catOf(task.category).label, task.kind !== 'todo' ? KINDS[task.kind].label : null, task.person].filter(Boolean).join(' · ');
+  return (
+    <View style={{ flexDirection: D.row, alignItems: 'stretch', gap: 10 }}>
+      <View style={{ width: 54, alignItems: 'center', paddingTop: 14 }}>
+        <T size={12.5} w="bold" align="center" color={lateNow ? C.lateText : done ? C.faint : C.indigo}>
+          {lateNow ? tx('متأخرة', 'Late') : at ? (today ? clock(new Date(at)) : dayLabel(new Date(at), now)) : '—'}
+        </T>
+      </View>
+      <Pressable onPress={onOpen} style={({ pressed }) => ({ flex: 1, minWidth: 0, ...cardStyle, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 12, flexDirection: D.row, alignItems: 'center', gap: 10, opacity: done ? 0.6 : 1, backgroundColor: pressed ? C.bg : C.surface })}>
+        <View style={{ width: 4, alignSelf: 'stretch', borderRadius: 2, backgroundColor: sp.color }} />
+        <Check on={done} onPress={onToggle} size={22} label={done ? tx('إعادة فتحها', 'Reopen') : tx('تمت', 'Done')} />
+        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+          <T w="bold" size={14} numberOfLines={2} style={done ? { textDecorationLine: 'line-through' } : null}>{task.title}</T>
+          {!!meta && <T size={12} color={C.sub} numberOfLines={1}>{meta}</T>}
+        </View>
+        <SpaceTag category={task.category} />
+      </Pressable>
+    </View>
+  );
+}
+
+/** Desktop: one space (work or personal) as a column, its tasks under small time headings */
+function SpaceColumn({ space, tasks, doneToday, now, onOpen, onToggle }: { space: Space; tasks: { key: GroupKey; list: Task[] }[]; doneToday: Task[]; now: Date; onOpen: (t: Task) => void; onToggle: (t: Task) => void }) {
+  const sp = SPACES[space];
+  const count = tasks.reduce((n, g) => n + g.list.length, 0);
+  return (
+    <View style={{ flex: 1, minWidth: 0, ...cardStyle, overflow: 'hidden' }}>
+      <View style={{ flexDirection: D.row, alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.line }}>
+        <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: sp.soft, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name={sp.icon} size={18} color={sp.color} />
+        </View>
+        <T w="bold" size={16} style={{ flex: 1 }}>{sp.label}</T>
+        <T size={13} color={C.sub}>{countTasks(count)}</T>
+      </View>
+      {tasks.map((g) => (
+        <View key={g.key}>
+          <T size={12} w="bold" color={g.key === 'late' ? C.lateText : C.sub} style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 2 }}>{GROUPS[g.key].label}</T>
+          {g.list.map((t, i) => (
+            <TaskRow key={t.id} task={t} now={now} last={i === g.list.length - 1} onToggle={() => onToggle(t)} onOpen={() => onOpen(t)} />
+          ))}
+        </View>
+      ))}
+      {!!doneToday.length && (
+        <View>
+          <T size={12} w="bold" color={C.sub} style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 2 }}>{tx('أُنجزت اليوم', 'Done today')}</T>
+          {doneToday.slice(0, 5).map((t, i, all) => (
+            <TaskRow key={t.id} task={t} now={now} last={i === all.length - 1} onToggle={() => onToggle(t)} onOpen={() => onOpen(t)} />
+          ))}
+        </View>
+      )}
+      {!count && !doneToday.length && (
+        <T size={TS.small} color={C.sub} align="center" style={{ padding: 24 }}>{tx('لا مهام مفتوحة هنا.', 'No open tasks here.')}</T>
+      )}
     </View>
   );
 }
@@ -571,83 +522,5 @@ function CaptureBar({ onSubmit, onMic, onEmail, canMic }: { onSubmit: (t: string
       </Pressable>
       <PrimaryButton label={tx('رتّبها', 'Organise')} icon="creation" onPress={send} disabled={!text.trim()} style={{ height: 48, paddingHorizontal: 22 }} />
     </View>
-  );
-}
-
-/** A board column on the desktop home: a header with its count, then its cards */
-function Column({ title, hint, icon, color, count, children, empty }: { title: string; hint: string; icon: IconName; color: string; count: number; children: React.ReactNode; empty: string }) {
-  return (
-    <View style={{ flex: 1, minWidth: 0 }}>
-      <View style={{ flexDirection: D.row, alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: tint(color, 0.12), alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name={icon} size={18} color={color} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <T w="bold" size={TS.h2} style={{ lineHeight: 24 }}>
-            {title}
-          </T>
-          <T size={TS.tiny} color={C.sub}>
-            {hint}
-          </T>
-        </View>
-        <View style={{ minWidth: 28, height: 24, paddingHorizontal: 8, borderRadius: 12, backgroundColor: tint(color, 0.12), alignItems: 'center', justifyContent: 'center' }}>
-          <T w="semibold" size={TS.small} color={color} align="center">
-            {count}
-          </T>
-        </View>
-      </View>
-      {count ? (
-        children
-      ) : (
-        <Card style={{ padding: 20, alignItems: 'center' }}>
-          <T size={TS.small} color={C.faint} align="center">
-            {empty}
-          </T>
-        </Card>
-      )}
-    </View>
-  );
-}
-
-function Stat({ n, label, icon, color, onPress, tall }: { n: number; label: string; icon: IconName; color: string; onPress: () => void; tall?: boolean }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flex: 1,
-        backgroundColor: pressed ? '#FBFBFF' : C.surface,
-        borderRadius: tall ? R.card : 16,
-        paddingVertical: tall ? 20 : 12,
-        paddingHorizontal: tall ? 18 : 12,
-        gap: 2,
-        justifyContent: tall ? 'space-between' : undefined,
-        ...lift,
-      })}
-    >
-      <View style={{ flexDirection: D.row, alignItems: 'center', justifyContent: 'space-between' }}>
-        <Num size={tall ? 34 : 22} color={n ? color : C.faint}>
-          {n}
-        </Num>
-        <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: tint(color, 0.12), alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name={icon} size={16} color={color} />
-        </View>
-      </View>
-      <T size={TS.small} color={C.sub} numberOfLines={1}>
-        {label}
-      </T>
-    </Pressable>
-  );
-}
-
-function DockButton({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={{ alignItems: 'center', width: 70, gap: 2 }}>
-      <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon name={icon} size={21} color={C.indigo} />
-      </View>
-      <T w="medium" size={TS.tiny} color={C.indigo} align="center">
-        {label}
-      </T>
-    </Pressable>
   );
 }

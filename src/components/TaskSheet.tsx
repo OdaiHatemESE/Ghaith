@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Platform, Pressable, TextInput, View } from 'react-native';
 import { D, tx } from '../lib/i18n';
 import { Draft, useStore } from '../lib/store';
-import { addDays, atTime, CAT_ORDER, Category, CATS, clock, dayLabel, Kind, KIND_ORDER, KINDS, Priority, Repeat, REPEATS, startOfDay, Task } from '../lib/tasks';
+import { addDays, atTime, Category, catOf, CATS, clock, Space, SPACE_CATS, SPACES, spaceOf, dayLabel, Kind, KIND_ORDER, KINDS, Priority, Repeat, REPEATS, startOfDay, Task } from '../lib/tasks';
 import { C, F, R, tint, TS } from '../theme';
 import { Card, Chip, ErrorText, Icon, IconName, PrimaryButton, T, Toggle } from '../ui';
 import { Sheet } from './Sheet';
@@ -135,7 +135,7 @@ export function TaskSheet({ task, draft, onDraft, onClose }: { task: Task | null
   const done = task?.status === 'done';
   const personLabel = kind === 'waiting' ? tx('بانتظار من؟', 'Waiting on whom?') : kind === 'reply' ? tx('الرد على من؟', 'Reply to whom?') : tx('الشخص أو الجهة', 'Person or party');
   const heading = onDraft ? (draft ? tx('تعديل المهمة', 'Edit task') : tx('مهمة إضافية', 'Another task')) : task ? tx('تفاصيل المهمة', 'Task details') : tx('مهمة جديدة', 'New task');
-  const cat = CATS[category];
+  const cat = catOf(category);
 
   return (
     <Sheet visible title={heading} onClose={onClose} footer={<PrimaryButton label={onDraft ? tx('اعتماد', 'Done') : task ? tx('حفظ التغييرات', 'Save changes') : tx('إضافة المهمة', 'Add task')} icon="check" onPress={submit} busy={busy} />}>
@@ -204,10 +204,17 @@ export function TaskSheet({ task, draft, onDraft, onClose }: { task: Task | null
       {/* Details */}
       <T w="semibold" size={TS.small} color={C.sub} style={{ marginTop: 18, marginBottom: 8 }}>{tx('التفاصيل', 'Details')}</T>
       <Card>
-        <Row icon={cat.icon} color={cat.color} label={tx('التصنيف', 'Category')} value={cat.label} open={open === 'category'} onPress={() => toggle('category')}>
-          <View style={{ flexDirection: D.row, flexWrap: 'wrap', gap: 8 }}>
-            {CAT_ORDER.map((c) => (
-              <Chip key={c} label={CATS[c].label} icon={CATS[c].icon} color={CATS[c].color} on={category === c} onPress={() => setCategory(c)} />
+        <Row icon={cat.icon} color={cat.color} label={tx('التصنيف', 'Category')} value={`${SPACES[spaceOf(category)].label} · ${cat.label}`} open={open === 'category'} onPress={() => toggle('category')}>
+          <View style={{ gap: 12 }}>
+            {(['work', 'personal'] as Space[]).map((sp) => (
+              <View key={sp} style={{ gap: 8 }}>
+                <T size={TS.tiny} w="bold" color={SPACES[sp].color}>{SPACES[sp].label}</T>
+                <View style={{ flexDirection: D.row, flexWrap: 'wrap', gap: 8 }}>
+                  {SPACE_CATS[sp].map((c) => (
+                    <Chip key={c} label={CATS[c].label} icon={CATS[c].icon} color={SPACES[sp].color} on={category === c} onPress={() => setCategory(c)} />
+                  ))}
+                </View>
+              </View>
             ))}
           </View>
         </Row>
