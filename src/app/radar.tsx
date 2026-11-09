@@ -58,7 +58,7 @@ export default function Radar() {
     const due = task.due_at ? new Date(task.due_at) : null;
     // A deadline that has passed (or falls before tomorrow morning) moves to the end of tomorrow's working day
     const nextDue = due && due < morning ? atTime(addDays(startOfDay(new Date()), 1), 17) : due;
-    await save(task.id, { remind_at: morning.toISOString(), due_at: nextDue ? nextDue.toISOString() : null });
+    await save(task.id, { remind_at: morning.toISOString(), due_at: nextDue ? nextDue.toISOString() : null }, tx('أُجّلت إلى الغد من الرادار', 'Moved to tomorrow from the Radar'));
     markActed(item.id);
   };
 
@@ -196,7 +196,7 @@ export default function Radar() {
           source="email"
           proposals={review.proposals}
           onSave={async (pl) => {
-            const e = await apply(pl, 'email');
+            const e = await apply(pl, 'email', review.item.subject || review.item.sender);
             if (!e) {
               await decide(review.item.id, 'done');
               setReview(null);

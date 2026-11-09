@@ -116,7 +116,7 @@ export default function Inbox() {
           source="email"
           proposals={review.proposals}
           onSave={async (list) => {
-            const e = await apply(list, 'email');
+            const e = await apply(list, 'email', review.item.subject || review.item.sender);
             if (!e) {
               await decide(review.item.id, 'done');
               setReview(null);

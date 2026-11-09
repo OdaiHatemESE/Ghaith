@@ -122,8 +122,8 @@ export default function Home() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rec]);
-  const applyAll = async (list: Proposal[], source: Source) => {
-    const e = await apply(list, source);
+  const applyAll = async (list: Proposal[], source: Source, said?: string) => {
+    const e = await apply(list, source, said);
     if (e) return e;
     setFlow({ step: 'idle' });
     const adds = list.filter((p) => p.op === 'add').length;
@@ -255,7 +255,7 @@ export default function Home() {
           said={flow.said}
           source={flow.source}
           proposals={flow.proposals}
-          onSave={(list) => applyAll(list, flow.source)}
+          onSave={(list) => applyAll(list, flow.source, flow.said)}
           onClose={() => setFlow({ step: 'idle' })}
           onRetry={() => (flow.source === 'voice' ? startRecording() : setFlow({ step: 'typing', mode: flow.source === 'email' ? 'email' : 'text' }))}
         />

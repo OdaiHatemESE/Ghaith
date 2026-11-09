@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Platform, Pressable, TextInput, View } from 'react-native';
 import { D, tx } from '../lib/i18n';
+import { describeChanges } from '../lib/history';
 import { Draft, useStore } from '../lib/store';
 import { addDays, atTime, Category, catOf, CATS, clock, Space, SPACE_CATS, SPACES, spaceOf, dayLabel, Kind, KIND_ORDER, KINDS, Priority, Repeat, REPEATS, startOfDay, Task } from '../lib/tasks';
 import { C, F, R, tint, TS } from '../theme';
@@ -62,6 +63,60 @@ function Row({
   );
 }
 
+/** What a change is, for asking why: the action, the reasons to tap, and the lines that say what changed */
+type Ask = { kind: 'change' | 'postpone' | 'done' | 'reopen'; lines: string[]; run: (comment: string) => Promise<string | null | void> };
+
+const REASONS: Record<Ask['kind'], () => string[]> = {
+  postpone: () => [tx('بانتظار رد', 'Waiting for a reply'), tx('انشغلت بأولوية أخرى', 'Another priority came first'), tx('بطلب من المدير', 'The manager asked'), tx('تغيّر الموعد', 'The date changed')],
+  change: () => [tx('معلومة جديدة', 'New information'), tx('بطلب من المدير', 'The manager asked'), tx('تغيّر المطلوب', 'What is needed changed')],
+  done: () => [tx('أُرسل الرد', 'Reply sent'), tx('تم بالاتصال', 'Done by phone'), tx('أُنجزت كما هو مطلوب', 'Done as asked'), tx('سُلّمت للمدير', 'Handed to the manager')],
+  reopen: () => [tx('لم تكتمل بعد', 'Not finished yet'), tx('طلبوا تعديلاً', 'They asked for a change'), tx('نقص شيء', 'Something was missing')],
+};
+const QUESTION: Record<Ask['kind'], () => string> = {
+  postpone: () => tx('لماذا أُجّلت؟', 'Why is it moved?'),
+  change: () => tx('ما سبب التغيير؟', 'Why the change?'),
+  done: () => tx('كيف أُنجزت؟', 'How was it done?'),
+  reopen: () => tx('لماذا أُعيد فتحها؟', 'Why reopen it?'),
+};
+
+/** Asked after a change: one line (optional) kept in the task's history, so the follow-up has the story */
+function CommentStep({ ask, text, setText }: { ask: Ask; text: string; setText: (s: string) => void }) {
+  return (
+    <View style={{ gap: 14, marginTop: 4 }}>
+      <View style={{ flexDirection: D.row, alignItems: 'center', gap: 10 }}>
+        <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: tint(C.glow, 0.12), alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="message-text-clock-outline" size={21} color={C.glow} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <T w="bold" size={TS.h2}>{QUESTION[ask.kind]()}</T>
+          <T size={TS.small} color={C.sub}>{tx('سطر واحد يُحفظ في سجل المهمة، لتعرف القصة حين تتابعها', 'One line kept in the task’s history, so you know the story when you follow up')}</T>
+        </View>
+      </View>
+      {!!ask.lines.length && (
+        <View style={{ backgroundColor: C.surface, borderRadius: 14, padding: 12, gap: 4 }}>
+          {ask.lines.map((l, i) => (
+            <T key={i} size={TS.small} color={C.sub}>{l}</T>
+          ))}
+        </View>
+      )}
+      <View style={{ flexDirection: D.row, flexWrap: 'wrap', gap: 8 }}>
+        {REASONS[ask.kind]().map((r) => (
+          <Chip key={r} label={r} on={text === r} onPress={() => setText(text === r ? '' : r)} />
+        ))}
+      </View>
+      <TextInput
+        value={text}
+        onChangeText={setText}
+        placeholder={tx('أو اكتب: اتصلت بخالد وسيرد الأحد…', 'Or write: called Khalid, he will reply on Sunday…')}
+        placeholderTextColor={C.faint}
+        multiline
+        maxLength={2000}
+        style={{ fontFamily: F.regular, fontSize: TS.body, lineHeight: 24, color: C.text, textAlign: D.align, writingDirection: D.writing, backgroundColor: C.surface, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, minHeight: 88, textAlignVertical: 'top', ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null) }}
+      />
+    </View>
+  );
+}
+
 function QuickAction({ icon, label, color, onPress }: { icon: IconName; label: string; color: string; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => ({ flex: 1, alignItems: 'center', gap: 4, paddingVertical: 10, borderRadius: 16, backgroundColor: pressed ? tint(color, 0.16) : tint(color, 0.09) })}>
@@ -89,7 +144,20 @@ export function TaskSheet({ task, draft, onDraft, onClose }: { task: Task | null
   const [open, setOpen] = useState<Prop | null>(() => (src && !src.remind_at && !src.due_at ? 'remind' : null));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [ask, setAsk] = useState<Ask | null>(null);
+  const [comment, setComment] = useState('');
   const toggle = (p: Prop) => setOpen((o) => (o === p ? null : p));
+  const askWhy = (a: Ask) => (setComment(''), setErr(''), setAsk(a));
+
+  /** Runs the change with the comment (or none), then closes */
+  const finish = async (withComment: boolean) => {
+    if (!ask) return;
+    setBusy(true);
+    const e = await ask.run(withComment ? comment.trim() : '');
+    setBusy(false);
+    if (e) setErr(e);
+    else onClose();
+  };
 
   const submit = async () => {
     if (!title.trim()) return setErr(tx('اكتب عنوان المهمة.', 'Write the task title.'));
@@ -108,8 +176,20 @@ export function TaskSheet({ task, draft, onDraft, onClose }: { task: Task | null
       onDraft({ ...fields, similar_to: draft?.similar_to ?? null });
       return onClose();
     }
+    if (task) {
+      // What changed, as the history will show it; nothing changed: nothing to ask
+      const pairs: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(fields)) {
+        const old = (task as unknown as Record<string, unknown>)[k] ?? null;
+        const same = k.endsWith('_at') ? (old ? new Date(String(old)).getTime() : null) === (v ? new Date(String(v)).getTime() : null) : old === v;
+        if (!same) pairs[k] = [old, v];
+      }
+      if (!Object.keys(pairs).length) return onClose();
+      const later = (k: 'due_at' | 'remind_at') => !!pairs[k] && !!task[k] && !!fields[k] && new Date(fields[k]!) > new Date(task[k]!);
+      return askWhy({ kind: later('due_at') || later('remind_at') ? 'postpone' : 'change', lines: describeChanges(pairs), run: (c) => save(task.id, fields, c) });
+    }
     setBusy(true);
-    const e = await save(task?.id ?? null, fields);
+    const e = await save(null, fields);
     setBusy(false);
     if (e) setErr(e);
     else onClose();
@@ -121,15 +201,17 @@ export function TaskSheet({ task, draft, onDraft, onClose }: { task: Task | null
   };
 
   /** Moves the reminder to tomorrow 9:00, and the deadline by the same amount (never before the reminder) */
-  async function postpone() {
+  function postpone() {
     if (!task) return;
-    onClose();
     const morning = atTime(addDays(startOfDay(new Date()), 1), 9);
     const shift = morning.getTime() - (task.remind_at ? new Date(task.remind_at).getTime() : new Date().getTime());
-    await save(task.id, {
+    const fields = {
       remind_at: morning.toISOString(),
       due_at: task.due_at ? new Date(Math.max(new Date(task.due_at).getTime() + shift, morning.getTime())).toISOString() : null,
-    });
+    };
+    const pairs: Record<string, unknown> = { remind_at: [task.remind_at, fields.remind_at] };
+    if (task.due_at) pairs.due_at = [task.due_at, fields.due_at];
+    askWhy({ kind: 'postpone', lines: describeChanges(pairs), run: (c) => save(task.id, fields, c) });
   }
 
   const done = task?.status === 'done';
@@ -138,14 +220,37 @@ export function TaskSheet({ task, draft, onDraft, onClose }: { task: Task | null
   const cat = catOf(category);
 
   return (
-    <Sheet visible title={heading} onClose={onClose} footer={<PrimaryButton label={onDraft ? tx('اعتماد', 'Done') : task ? tx('حفظ التغييرات', 'Save changes') : tx('إضافة المهمة', 'Add task')} icon="check" onPress={submit} busy={busy} />}>
+    <Sheet
+      visible
+      title={ask ? (task?.title ?? heading) : heading}
+      onClose={onClose}
+      footer={
+        ask ? (
+          <View style={{ gap: 6 }}>
+            <PrimaryButton label={comment.trim() ? tx('حفظ مع السبب', 'Save with the reason') : tx('حفظ', 'Save')} icon="check" onPress={() => finish(true)} busy={busy} />
+            <Pressable onPress={() => !busy && finish(false)} hitSlop={8} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 6 }}>
+              <T size={TS.small} w="bold" color={C.sub}>{tx('تخطٍّ، بدون تعليق', 'Skip, no comment')}</T>
+            </Pressable>
+          </View>
+        ) : (
+          <PrimaryButton label={onDraft ? tx('اعتماد', 'Done') : task ? tx('حفظ التغييرات', 'Save changes') : tx('إضافة المهمة', 'Add task')} icon="check" onPress={submit} busy={busy} />
+        )
+      }
+    >
+      {ask ? (
+        <>
+          <CommentStep ask={ask} text={comment} setText={setComment} />
+          <ErrorText text={err} />
+        </>
+      ) : (
+      <>
       {task && (
         <View style={{ flexDirection: D.row, gap: 8, marginTop: 4, marginBottom: 14 }}>
           {done ? (
-            <QuickAction icon="restore" label={tx('إعادة فتحها', 'Reopen')} color={C.indigo} onPress={act(() => reopen(task.id))} />
+            <QuickAction icon="restore" label={tx('إعادة فتحها', 'Reopen')} color={C.indigo} onPress={() => askWhy({ kind: 'reopen', lines: [], run: (c) => reopen(task.id, c) })} />
           ) : (
             <>
-              <QuickAction icon="check-circle-outline" label={tx('أُنجزت', 'Done')} color={C.tealDeep} onPress={act(() => complete(task.id))} />
+              <QuickAction icon="check-circle-outline" label={tx('أُنجزت', 'Done')} color={C.tealDeep} onPress={() => askWhy({ kind: 'done', lines: [], run: (c) => complete(task.id, c) })} />
               <QuickAction icon="weather-sunset-up" label={tx('تأجيل للغد', 'Tomorrow')} color={C.glow} onPress={postpone} />
             </>
           )}
@@ -253,6 +358,8 @@ export function TaskSheet({ task, draft, onDraft, onClose }: { task: Task | null
 
       <ErrorText text={err} />
       <View style={{ height: 12 }} />
+      </>
+      )}
     </Sheet>
   );
 }

@@ -37,11 +37,12 @@ type Store = {
   /** Sends one capture to غيث; resolves with the proposed changes (or throws a readable error) */
   capture: (text: string, source: Source) => Promise<Proposal[]>;
   /** Applies the proposals the user kept; returns an error sentence or null */
-  apply: (list: Proposal[], source: Source) => Promise<string | null>;
-  complete: (id: string) => Promise<void>;
-  reopen: (id: string) => Promise<void>;
+  apply: (list: Proposal[], source: Source, said?: string) => Promise<string | null>;
+  /** `comment` (optional) is kept with the change in the task's history */
+  complete: (id: string, comment?: string) => Promise<void>;
+  reopen: (id: string, comment?: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
-  save: (id: string | null, fields: Partial<Task>) => Promise<string | null>;
+  save: (id: string | null, fields: Partial<Task>, comment?: string) => Promise<string | null>;
   saveSettings: (s: Partial<Settings>) => Promise<void>;
 };
 
@@ -140,8 +141,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const apply = useCallback(
-    async (list: Proposal[], source: Source) => {
+    async (list: Proposal[], source: Source, said?: string) => {
       const errors: string[] = [];
+      // What the person said becomes the reason for the changes Ghaith made from it, in each task's history
+      const s = said?.trim().replace(/\s+/g, ' ');
+      const quote = s ? (s.length > 240 ? `${s.slice(0, 240)}…` : s) : '';
+      const comment = quote ? (source === 'voice' ? tx(`من تسجيل صوتي: «${quote}»`, `From a voice note: “${quote}”`) : source === 'email' ? tx(`من بريد: «${quote}»`, `From an email: “${quote}”`) : tx(`كتبتُ: «${quote}»`, `I wrote: “${quote}”`)) : null;
       const adds = list.filter((p): p is Extract<Proposal, { op: 'add' }> => p.op === 'add');
       if (adds.length) {
         const { error } = await supabase.from('ghaith_tasks').insert(adds.map((p) => ({ ...p.task, source: source === 'email' ? 'text' : source })));
@@ -150,9 +155,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       for (const p of list) {
         const res =
           p.op === 'update'
-            ? await supabase.from('ghaith_tasks').update(p.changes).eq('id', p.id)
+            ? await supabase.rpc('ghaith_change_task', { p_id: p.id, p_fields: p.changes, p_comment: comment })
             : p.op === 'complete'
-              ? await supabase.rpc('ghaith_complete_task', { p_id: p.id })
+              ? await supabase.rpc('ghaith_complete_task', { p_id: p.id, p_comment: comment })
               : p.op === 'delete'
                 ? await supabase.from('ghaith_tasks').delete().eq('id', p.id)
                 : null;
@@ -167,10 +172,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const patchLocal = (id: string, fields: Partial<Task>) => setTasks((list) => list.map((t) => (t.id === id ? { ...t, ...fields } : t)));
 
   const complete = useCallback(
-    async (id: string) => {
+    async (id: string, comment?: string) => {
       const title = tasks.find((t) => t.id === id)?.title ?? '';
       patchLocal(id, { status: 'done', done_at: new Date().toISOString() });
-      const { error } = await supabase.rpc('ghaith_complete_task', { p_id: id });
+      const { error } = await supabase.rpc('ghaith_complete_task', { p_id: id, p_comment: comment?.trim() || null });
       if (error) patchLocal(id, { status: 'open', done_at: null });
       else botEmit({ kind: 'done', title });
       await loadTasks();
@@ -179,9 +184,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   );
 
   const reopen = useCallback(
-    async (id: string) => {
+    async (id: string, comment?: string) => {
       patchLocal(id, { status: 'open', done_at: null });
-      await supabase.from('ghaith_tasks').update({ status: 'open' }).eq('id', id);
+      await supabase.rpc('ghaith_reopen_task', { p_id: id, p_comment: comment?.trim() || null });
       await loadTasks();
     },
     [loadTasks],
@@ -198,11 +203,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   /** Creates (id null) or updates a task by hand; returns an error sentence or null */
   const save = useCallback(
-    async (id: string | null, fields: Partial<Task>) => {
+    async (id: string | null, fields: Partial<Task>, comment?: string) => {
       const { id: _i, created_at: _c, updated_at: _u, done_at: _d, ...clean } = fields;
       if (id) patchLocal(id, clean);
+      // Changes go through ghaith_change_task so the comment lands in the task's history with the change
       const res = id
-        ? await supabase.from('ghaith_tasks').update(clean).eq('id', id)
+        ? await supabase.rpc('ghaith_change_task', { p_id: id, p_fields: clean, p_comment: comment?.trim() || null })
         : await supabase.from('ghaith_tasks').insert({ ...clean, source: 'manual' });
       await loadTasks();
       return res.error ? friendlyError(res.error) : null;

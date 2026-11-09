@@ -74,13 +74,25 @@ export function describeChanges(changes: Record<string, unknown> | null): string
   return out;
 }
 
+/** What the comment on an event is: the reason for a change, how it was done, or a note added by hand */
+export function noteLabel(e: TaskEvent): string {
+  if (e.kind === 'done') return tx('كيف أُنجزت', 'How it was done');
+  if (e.kind === 'updated' || e.kind === 'reopened') return tx('السبب', 'Why');
+  return '';
+}
+
 export function eventTitle(e: TaskEvent): string {
   if (e.kind === 'created') {
     const s = (e.changes?.source as string) ?? 'manual';
-    return s === 'voice' ? tx('أُنشئت من تسجيل صوتي', 'Created from a voice note') : s === 'text' ? tx('أُنشئت من نص مكتوب', 'Created from text') : tx('أُنشئت يدوياً', 'Created by hand');
+    return s === 'voice' ? tx('أُنشئت من تسجيل صوتي', 'Created from a voice note') : s === 'text' ? tx('أُنشئت من نص مكتوب', 'Created from text') : s === 'email' ? tx('أُنشئت من بريد', 'Created from an email') : tx('أُنشئت يدوياً', 'Created by hand');
   }
   if (e.kind === 'done') return tx('أُنجزت', 'Marked done');
   if (e.kind === 'reopened') return tx('أُعيد فتحها', 'Reopened');
-  if (e.kind === 'updated') return tx('عُدّلت', 'Edited');
+  if (e.kind === 'updated') {
+    // Moved later or earlier: say so, rather than just "edited"
+    const moved = (e.changes?.due_at ?? e.changes?.remind_at) as [string | null, string | null] | undefined;
+    if (Array.isArray(moved) && moved[0] && moved[1]) return new Date(moved[1]) > new Date(moved[0]) ? tx('أُجّلت', 'Postponed') : tx('قُدّمت', 'Brought forward');
+    return tx('عُدّلت', 'Edited');
+  }
   return tx('ملاحظة', 'Note');
 }

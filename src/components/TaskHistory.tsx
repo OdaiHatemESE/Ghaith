@@ -1,14 +1,14 @@
 // The "History" part of a task: add a note or an update, and see everything that happened, newest first.
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, TextInput, View } from 'react-native';
-import { addNote, describeChanges, eventTime, eventTitle, loadEvents, removeNote, TaskEvent } from '../lib/history';
+import { addNote, describeChanges, eventTime, eventTitle, loadEvents, noteLabel, removeNote, TaskEvent } from '../lib/history';
 import { D, tx } from '../lib/i18n';
 import { C, F, R, tint, TS } from '../theme';
 import { Icon, IconName, T } from '../ui';
 
 const LOOK: Record<TaskEvent['kind'], { icon: IconName; color: string }> = {
   created: { icon: 'plus-circle-outline', color: C.indigo },
-  updated: { icon: 'pencil-outline', color: C.glow },
+  updated: { icon: 'pencil-outline', color: C.glowText },
   done: { icon: 'check-circle-outline', color: C.tealDeep },
   reopened: { icon: 'restore', color: C.amberText },
   note: { icon: 'message-text-outline', color: C.indigoHi },
@@ -93,7 +93,8 @@ export function TaskHistory({ taskId }: { taskId: string }) {
                       )}
                     </View>
                     {!!e.note && (
-                      <View style={{ marginTop: 4, backgroundColor: C.bg, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8 }}>
+                      <View style={{ marginTop: 4, backgroundColor: e.kind === 'note' ? C.bg : tint(look.color, 0.07), borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8, [D.rtl ? 'borderRightWidth' : 'borderLeftWidth']: e.kind === 'note' ? 0 : 3, borderColor: look.color, gap: 2 }}>
+                        {!!noteLabel(e) && <T size={TS.tiny} w="bold" color={look.color}>{noteLabel(e)}</T>}
                         <T size={TS.small}>{e.note}</T>
                       </View>
                     )}
