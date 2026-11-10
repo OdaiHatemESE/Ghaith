@@ -24,6 +24,8 @@ export type Proposal =
   | { op: 'complete' | 'delete'; id: string; current: Fields; unsure: boolean };
 
 type Status = 'loading' | 'out' | 'in';
+/** `meeting_id`: new tasks come from that meeting's minutes; `comment`: the reason kept in each task's history */
+export type ApplyOptions = { meeting_id?: string; comment?: string };
 
 type Store = {
   status: Status;
@@ -37,7 +39,7 @@ type Store = {
   /** Sends one capture to غيث; resolves with the proposed changes (or throws a readable error) */
   capture: (text: string, source: Source) => Promise<Proposal[]>;
   /** Applies the proposals the user kept; returns an error sentence or null */
-  apply: (list: Proposal[], source: Source, said?: string) => Promise<string | null>;
+  apply: (list: Proposal[], source: Source, said?: string, opts?: ApplyOptions) => Promise<string | null>;
   /** `comment` (optional) is kept with the change in the task's history */
   complete: (id: string, comment?: string) => Promise<void>;
   reopen: (id: string, comment?: string) => Promise<void>;
@@ -141,15 +143,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const apply = useCallback(
-    async (list: Proposal[], source: Source, said?: string) => {
+    async (list: Proposal[], source: Source, said?: string, opts?: ApplyOptions) => {
       const errors: string[] = [];
       // What the person said becomes the reason for the changes Ghaith made from it, in each task's history
       const s = said?.trim().replace(/\s+/g, ' ');
       const quote = s ? (s.length > 240 ? `${s.slice(0, 240)}…` : s) : '';
-      const comment = quote ? (source === 'voice' ? tx(`من تسجيل صوتي: «${quote}»`, `From a voice note: “${quote}”`) : source === 'email' ? tx(`من بريد: «${quote}»`, `From an email: “${quote}”`) : tx(`كتبتُ: «${quote}»`, `I wrote: “${quote}”`)) : null;
+      const comment = opts?.comment ?? (quote ? (source === 'voice' ? tx(`من تسجيل صوتي: «${quote}»`, `From a voice note: “${quote}”`) : source === 'email' ? tx(`من بريد: «${quote}»`, `From an email: “${quote}”`) : tx(`كتبتُ: «${quote}»`, `I wrote: “${quote}”`)) : null);
       const adds = list.filter((p): p is Extract<Proposal, { op: 'add' }> => p.op === 'add');
       if (adds.length) {
-        const { error } = await supabase.from('ghaith_tasks').insert(adds.map((p) => ({ ...p.task, source: source === 'email' ? 'text' : source })));
+        const { error } = await supabase.from('ghaith_tasks').insert(adds.map((p) => ({ ...p.task, source: source === 'email' ? 'text' : source, ...(opts?.meeting_id ? { meeting_id: opts.meeting_id } : null) })));
         if (error) errors.push(friendlyError(error));
       }
       for (const p of list) {

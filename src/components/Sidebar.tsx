@@ -89,6 +89,7 @@ export function Sidebar() {
         <Item icon="format-list-checks" label={tx('المهام', 'Tasks')} active={at('/tasks')} count={open.length} onPress={() => router.navigate('/tasks')} />
         <Item icon="radar" label={tx('الرادار', 'Radar')} active={at('/radar')} count={attention} alert onPress={() => router.navigate('/radar')} />
         <Item icon="message-text-outline" label={tx('المحادثة', 'Chat')} active={at('/chat')} onPress={() => router.navigate('/chat')} />
+        <Item icon="account-group-outline" label={tx('الاجتماعات', 'Meetings')} active={at('/meetings') || at('/meeting')} onPress={() => router.navigate('/meetings')} />
       </View>
 
       <T size={TS.tiny} w="bold" color="#A9AEE0" style={{ marginTop: 26, marginBottom: 6, paddingHorizontal: 12 }}>{tx('المساحات', 'Spaces')}</T>

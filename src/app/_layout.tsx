@@ -99,6 +99,8 @@ function Gate() {
           <Stack.Screen name="chat" />
           <Stack.Screen name="radar" />
           <Stack.Screen name="inbox" />
+          <Stack.Screen name="meetings" />
+          <Stack.Screen name="meeting" />
           <Stack.Screen name="settings" />
         </Stack.Protected>
         <Stack.Protected guard={!signedIn}>

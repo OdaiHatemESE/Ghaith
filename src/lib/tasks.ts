@@ -22,11 +22,13 @@ export type Task = {
   status: 'open' | 'done';
   done_at: string | null;
   source: 'voice' | 'text' | 'manual';
+  /** The meeting whose minutes this task came from */
+  meeting_id?: string | null;
   created_at: string;
   updated_at: string;
 };
 
-export const TASK_FIELDS = 'id,title,notes,kind,category,priority,person,due_at,remind_at,repeat,status,done_at,source,created_at,updated_at';
+export const TASK_FIELDS = 'id,title,notes,kind,category,priority,person,due_at,remind_at,repeat,status,done_at,source,meeting_id,created_at,updated_at';
 
 type Labelled = { readonly label: string };
 /** An object whose `label` follows the current language */

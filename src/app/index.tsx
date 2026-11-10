@@ -276,6 +276,14 @@ export default function Home() {
                 <T size={14} color={C.sub}>{longDate(now)}</T>
                 <GhaithGreeter size={112} />
               </View>
+              <View style={{ flexDirection: D.row, gap: 8 }}>
+              <Pressable
+                onPress={() => router.push('/meetings')}
+                style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({ flexDirection: D.row, alignItems: 'center', gap: 6, paddingHorizontal: 16, height: 42, borderRadius: R.pill, borderWidth: 1.5, borderColor: C.lineHi, backgroundColor: hovered || pressed ? C.surfaceAlt : C.surface })}
+              >
+                <Icon name="account-group-outline" size={18} color={C.indigo} />
+                <T w="medium" color={C.indigo}>{tx('محضر اجتماع', 'Meeting minutes')}</T>
+              </Pressable>
               <Pressable
                 onPress={() => setOpen('new')}
                 style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({ flexDirection: D.row, alignItems: 'center', gap: 6, paddingHorizontal: 16, height: 42, borderRadius: R.pill, borderWidth: 1.5, borderColor: C.lineHi, backgroundColor: hovered || pressed ? C.surfaceAlt : C.surface })}
@@ -283,6 +291,7 @@ export default function Home() {
                 <Icon name="plus" size={18} color={C.indigo} />
                 <T w="medium" color={C.indigo}>{tx('مهمة يدوياً', 'Add manually')}</T>
               </Pressable>
+              </View>
             </View>
 
             <CaptureBar onSubmit={(t) => process(t, 'text')} onMic={startRecording} onEmail={() => setFlow({ step: 'typing', mode: 'email' })} canMic={dict.state !== 'unsupported'} />
@@ -353,6 +362,9 @@ export default function Home() {
           </Pressable>
           <Pressable onPress={() => setFlow({ step: 'typing', mode: 'email' })} accessibilityRole="button" accessibilityLabel={tx('لصق بريد إلكتروني', 'Paste an email')} style={{ width: 46, height: 46, ...cardStyle, borderRadius: 23, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="email-outline" size={20} color={C.indigo} />
+          </Pressable>
+          <Pressable onPress={() => router.push('/meetings')} accessibilityRole="button" accessibilityLabel={tx('محضر اجتماع', 'Meeting minutes')} style={{ width: 46, height: 46, ...cardStyle, borderRadius: 23, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="account-group-outline" size={21} color={C.indigo} />
           </Pressable>
         </View>
         {errorBox}

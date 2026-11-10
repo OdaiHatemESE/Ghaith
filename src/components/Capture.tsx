@@ -180,7 +180,7 @@ export function TypeSheet({ mode, onSubmit, onClose }: { mode: 'text' | 'email';
 }
 
 // ---------------------------------------------------------------- thinking
-export function ThinkingView() {
+export function ThinkingView({ title, sub }: { title?: string; sub?: string } = {}) {
   const insets = useSafeAreaInsets();
   const now = useTick(80);
   const dots = '.'.repeat(1 + (Math.floor(now / 400) % 3));
@@ -189,8 +189,8 @@ export function ThinkingView() {
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: insets.bottom }}>
         <Glow />
         <GhaithBot state="think" size={190} />
-        <T w="bold" size={TS.h2} align="center" style={{ marginTop: 18 }}>{tx('غيث يرتّب', 'Ghaith is organising')}{dots}</T>
-        <T size={TS.small} color={C.sub} align="center">{tx('يحوّل كلامك إلى مهام وتعديلات واضحة', 'Turning what you said into clear tasks and changes')}</T>
+        <T w="bold" size={TS.h2} align="center" style={{ marginTop: 18 }}>{title ?? tx('غيث يرتّب', 'Ghaith is organising')}{dots}</T>
+        <T size={TS.small} color={C.sub} align="center">{sub ?? tx('يحوّل كلامك إلى مهام وتعديلات واضحة', 'Turning what you said into clear tasks and changes')}</T>
       </View>
     </Modal>
   );
