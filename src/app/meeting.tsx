@@ -44,9 +44,12 @@ export default function MeetingScreen() {
   const dirty = useRef(false);
   const creating = useRef<Promise<string | null> | null>(null);
 
-  // Opening an existing meeting: its fields, and the minutes if Ghaith already organised it
+  // Opening an existing meeting: its fields, and the minutes if Ghaith already organised it. Not the meeting this
+  // screen just created: what is on screen is newer than the copy on the server
+  const held = useRef<string | null>(null);
   useEffect(() => {
-    if (!params.id) return;
+    if (!params.id || held.current === params.id) return;
+    held.current = params.id;
     loadMeeting(params.id).then((m) => {
       if (m) {
         setTitle(m.title);
@@ -63,25 +66,31 @@ export default function MeetingScreen() {
     setTimeout(() => setToast(''), 2600);
   };
 
-  /** Saves what is written; creates the meeting the first time. Resolves with its id */
+  /** Saves what is written; creates the meeting the first time. Resolves with its id, or null when it could not save */
   const persist = useCallback(async (): Promise<string | null> => {
     const fields = { title: title.trim(), attendees: attendees.trim() || null, points };
-    if (id) {
-      const e = await updateMeeting(id, fields);
-      if (e) setErr(e);
-      return id;
-    }
+    const save = async (mid: string) => {
+      const e = await updateMeeting(mid, fields);
+      if (e) setErr(tx('لم يُحفظ آخر تعديل: ', 'Your last change was not saved: ') + e);
+      return e ? null : mid;
+    };
+    if (id) return save(id);
     if (!fields.title && !points.length) return null;
-    if (!creating.current)
-      creating.current = createMeeting(fields).then(({ meeting: m, error }) => {
-        if (error) setErr(error);
-        if (m) {
-          setId(m.id);
-          router.setParams({ id: m.id });
-        }
-        creating.current = null;
-        return m?.id ?? null;
-      });
+    // Being created already: save what was written since, once it exists
+    if (creating.current) {
+      const mid = await creating.current;
+      return mid ? save(mid) : null;
+    }
+    creating.current = createMeeting(fields).then(({ meeting: m, error }) => {
+      if (error) setErr(error);
+      if (m) {
+        held.current = m.id;
+        setId(m.id);
+        router.setParams({ id: m.id });
+      }
+      creating.current = null;
+      return m?.id ?? null;
+    });
     return creating.current;
   }, [id, title, attendees, points]);
 
