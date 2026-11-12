@@ -1,16 +1,18 @@
-// One meeting: write its title and points as they come (typed, or spoken one point at a time), then Ghaith organises
-// them into minutes and proposes the actions as tasks. The minutes can be shared (email, WhatsApp, copy).
-// Saved as you write; the meeting is created with its first word. `?id=` opens an existing one.
+// One meeting or learning session: write its title and points as they come (typed, or spoken one point at a time),
+// then Ghaith organises them: a meeting into minutes with its actions proposed as tasks; a course or training
+// (`?kind=learning`) into a learning note: what to keep, what to read more about, terms, how to apply it. Both can be
+// shared (email, WhatsApp, copy). Saved as you write; created with its first word. `?id=` opens an existing one.
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { countTasks, ReviewView, ThinkingView } from '../components/Capture';
 import { GhaithBot } from '../components/GhaithBot';
+import { LearningView, TAG_INFO } from '../components/LearningView';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { botEmit } from '../lib/bot';
 import { D, getLang, tx } from '../lib/i18n';
-import { createMeeting, deleteMeeting, loadMeeting, mailMinutes, Meeting, meetingWhen, Minutes, newPointId, organise, Point, shareMinutes, updateMeeting, useMeetings } from '../lib/meetings';
+import { createMeeting, deleteMeeting, Kind, learningOf, loadMeeting, mailMinutes, Meeting, meetingWhen, Minutes, newPointId, organise, Point, shareMinutes, Tag, updateMeeting, useMeetings } from '../lib/meetings';
 import { Proposal, useStore } from '../lib/store';
 import { catOf, shortWhen, Task } from '../lib/tasks';
 import { useDictation } from '../lib/voice';
@@ -25,13 +27,16 @@ const webInput = Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : 
 export default function MeetingScreen() {
   const insets = useSafeAreaInsets();
   const wide = useWide();
-  const params = useLocalSearchParams<{ id?: string }>();
+  const params = useLocalSearchParams<{ id?: string; kind?: string }>();
   const { list } = useMeetings();
   const { tasks, apply } = useStore();
   const dict = useDictation();
 
   const [id, setId] = useState<string | null>(params.id ?? null);
   const meeting = list.find((m) => m.id === id) ?? null;
+  const kind: Kind = meeting?.kind ?? (params.kind === 'learning' ? 'learning' : 'meeting');
+  const learning = kind === 'learning';
+  const L = (meetingAr: string, meetingEn: string, learnAr: string, learnEn: string) => (learning ? tx(learnAr, learnEn) : tx(meetingAr, meetingEn));
   const [title, setTitle] = useState('');
   const [attendees, setAttendees] = useState('');
   const [points, setPoints] = useState<Point[]>([]);
@@ -81,7 +86,7 @@ export default function MeetingScreen() {
       const mid = await creating.current;
       return mid ? save(mid) : null;
     }
-    creating.current = createMeeting(fields).then(({ meeting: m, error }) => {
+    creating.current = createMeeting({ ...fields, kind }).then(({ meeting: m, error }) => {
       if (error) setErr(error);
       if (m) {
         held.current = m.id;
@@ -92,7 +97,7 @@ export default function MeetingScreen() {
       return m?.id ?? null;
     });
     return creating.current;
-  }, [id, title, attendees, points]);
+  }, [id, title, attendees, points, kind]);
 
   // Saved as you write
   useEffect(() => {
@@ -108,11 +113,11 @@ export default function MeetingScreen() {
     fn(v);
   };
 
-  const addPoint = (text: string) => {
+  const addPoint = (text: string, tag?: Tag) => {
     const t = text.trim();
     if (!t) return;
     dirty.current = true;
-    setPoints((l) => [...l, { id: newPointId(), text: t }]);
+    setPoints((l) => [...l, { id: newPointId(), text: t, ...(tag ? { tag } : null) }]);
   };
 
   const organiseNow = async () => {
@@ -134,12 +139,13 @@ export default function MeetingScreen() {
 
   const addActions = async (chosen: Proposal[]) => {
     if (!meeting) return null;
+    const name = meeting.title || tx('بدون عنوان', 'Untitled');
     const e = await apply(chosen, 'text', undefined, {
       meeting_id: meeting.id,
-      comment: tx(`من محضر اجتماع: «${meeting.title || 'بدون عنوان'}»`, `From the minutes of “${meeting.title || 'Untitled'}”`),
+      comment: learning ? tx(`من دفتر التعلّم: «${name}»`, `From the learning notes of “${name}”`) : tx(`من محضر اجتماع: «${name}»`, `From the minutes of “${name}”`),
     });
     if (e) return e;
-    await updateMeeting(meeting.id, { actions_added_at: new Date().toISOString() });
+    if (!learning) await updateMeeting(meeting.id, { actions_added_at: new Date().toISOString() });
     setFlow({ step: 'idle' });
     botEmit({ kind: 'saved', count: chosen.length });
     say(tx(`أُضيفت ${countTasks(chosen.length)} إلى مهامك`, `${countTasks(chosen.length)} added to your tasks`));
@@ -149,7 +155,17 @@ export default function MeetingScreen() {
   const share = async () => {
     if (!meeting) return;
     const r = await shareMinutes(meeting);
-    if (r === 'copied') say(tx('نُسخ المحضر، الصقه حيث تريد', 'Minutes copied, paste them anywhere'));
+    if (r === 'copied') say(L('نُسخ المحضر، الصقه حيث تريد', 'Minutes copied, paste them anywhere', 'نُسخت الملاحظات، الصقها حيث تريد', 'Notes copied, paste them anywhere'));
+  };
+
+  /** A topic to read more about, kept as a reading task (only when the person asks) */
+  const readLater = (r: { topic: string; why: string; search: string }) => {
+    if (!meeting) return;
+    const from = tx(`من دورة: ${meeting.title}`, `From the course: ${meeting.title}`);
+    setFlow({
+      step: 'review',
+      proposals: [{ op: 'add', task: { title: tx(`القراءة عن ${r.topic}`, `Read about ${r.topic}`), kind: 'todo', category: 'work', priority: 'low', person: null, due_at: null, remind_at: null, repeat: null, notes: [r.why, r.search && tx(`ابحث: ${r.search}`, `Search: ${r.search}`), from].filter(Boolean).join('\n') } } as Proposal],
+    });
   };
 
   const remove = async () => {
@@ -164,21 +180,24 @@ export default function MeetingScreen() {
 
   const headerRight = (
     <View style={{ flexDirection: D.row, gap: 4 }}>
-      {view && <HeaderIcon icon="share-variant-outline" label={tx('مشاركة المحضر', 'Share the minutes')} onPress={share} />}
-      {!!id && <HeaderIcon icon="trash-can-outline" label={tx('حذف الاجتماع', 'Delete the meeting')} onPress={() => setConfirmDelete((v) => !v)} />}
+      {view && <HeaderIcon icon="share-variant-outline" label={L('مشاركة المحضر', 'Share the minutes', 'مشاركة الملاحظات', 'Share the notes')} onPress={share} />}
+      {!!id && <HeaderIcon icon="trash-can-outline" label={L('حذف الاجتماع', 'Delete the meeting', 'حذف الدورة', 'Delete the session')} onPress={() => setConfirmDelete((v) => !v)} />}
     </View>
   );
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <View style={{ paddingHorizontal: wide ? 36 : 0 }}>
-        <ScreenHeader title={view ? tx('محضر الاجتماع', 'Meeting minutes') : id ? tx('نقاط الاجتماع', 'Meeting notes') : tx('اجتماع جديد', 'New meeting')} right={headerRight} />
+        <ScreenHeader
+          title={view ? L('محضر الاجتماع', 'Meeting minutes', 'ما تعلّمته', 'What I learned') : id ? L('نقاط الاجتماع', 'Meeting notes', 'ملاحظات الدورة', 'Course notes') : L('اجتماع جديد', 'New meeting', 'دورة أو تدريب جديد', 'New course or training')}
+          right={headerRight}
+        />
       </View>
 
       {confirmDelete && (
         <View style={{ ...column, paddingHorizontal: wide ? 0 : 16 }}>
           <View style={{ flexDirection: D.row, alignItems: 'center', gap: 10, backgroundColor: tint(C.late, 0.08), borderRadius: 14, padding: 12, marginBottom: 8 }}>
-            <T size={TS.small} color={C.lateText} style={{ flex: 1 }}>{tx('حذف الاجتماع ومحضره؟ المهام التي أضفتها منه تبقى.', 'Delete this meeting and its minutes? Tasks you added from it stay.')}</T>
+            <T size={TS.small} color={C.lateText} style={{ flex: 1 }}>{L('حذف الاجتماع ومحضره؟ المهام التي أضفتها منه تبقى.', 'Delete this meeting and its minutes? Tasks you added from it stay.', 'حذف الدورة وملاحظاتها؟ مهام القراءة التي أضفتها تبقى.', 'Delete this session and its notes? Reading tasks you added stay.')}</T>
             <Pressable onPress={remove} accessibilityRole="button" style={{ height: 34, paddingHorizontal: 14, borderRadius: R.pill, backgroundColor: C.lateText, justifyContent: 'center' }}>
               <T size={13} w="bold" color="#fff">{tx('احذف', 'Delete')}</T>
             </Pressable>
@@ -193,6 +212,19 @@ export default function MeetingScreen() {
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <GhaithBot state="think" size={110} />
         </View>
+      ) : view && meeting && learningOf(meeting) ? (
+        <LearningView
+          meeting={meeting}
+          note={learningOf(meeting)!}
+          linked={linked}
+          column={column}
+          onReadLater={readLater}
+          onEdit={() => setMode('write')}
+          onShare={share}
+          onMail={() => Linking.openURL(mailMinutes(meeting)).catch(() => {})}
+          onReorganise={organiseNow}
+          err={err}
+        />
       ) : view && meeting ? (
         <MinutesView
           meeting={meeting}
@@ -208,6 +240,7 @@ export default function MeetingScreen() {
         />
       ) : (
         <Writer
+          learning={learning}
           column={column}
           title={title}
           attendees={attendees}
@@ -217,6 +250,7 @@ export default function MeetingScreen() {
           onAttendees={edit(setAttendees)}
           onAdd={addPoint}
           onChange={(pid, text) => (dirty.current = true, setPoints((l) => l.map((p) => (p.id === pid ? { ...p, text } : p))))}
+          onTag={(pid, tag) => (dirty.current = true, setPoints((l) => l.map((p) => (p.id === pid ? { ...p, tag } : p))))}
           onRemove={(pid) => (dirty.current = true, setPoints((l) => l.filter((p) => p.id !== pid)))}
           dict={dict}
           organised={!!meeting?.minutes}
@@ -235,9 +269,14 @@ export default function MeetingScreen() {
           </View>
         </View>
       )}
-      {flow.step === 'thinking' && <ThinkingView title={tx('غيث يكتب المحضر', 'Ghaith is writing the minutes')} sub={tx('يرتّب النقاط ويستخرج القرارات والمهام', 'Grouping the points, pulling out decisions and actions')} />}
+      {flow.step === 'thinking' &&
+        (learning ? (
+          <ThinkingView title={tx('غيث يرتّب ما تعلّمته', 'Ghaith is organising what you learned')} sub={tx('يستخرج الأفكار والمصطلحات وما يستحق القراءة', 'Pulling out the ideas, terms and what is worth reading')} />
+        ) : (
+          <ThinkingView title={tx('غيث يكتب المحضر', 'Ghaith is writing the minutes')} sub={tx('يرتّب النقاط ويستخرج القرارات والمهام', 'Grouping the points, pulling out decisions and actions')} />
+        ))}
       {flow.step === 'review' && meeting && (
-        <ReviewView said={meeting.title || tx('اجتماع', 'Meeting')} source="text" proposals={flow.proposals} onSave={addActions} onClose={() => setFlow({ step: 'idle' })} onRetry={() => setFlow({ step: 'idle' })} />
+        <ReviewView said={meeting.title || L('اجتماع', 'Meeting', 'دورة', 'Course')} source="text" proposals={flow.proposals} onSave={addActions} onClose={() => setFlow({ step: 'idle' })} onRetry={() => setFlow({ step: 'idle' })} />
       )}
     </View>
   );
@@ -252,7 +291,11 @@ function HeaderIcon({ icon, label, onPress }: { icon: IconName; label: string; o
 }
 
 // ---------------------------------------------------------------- writing the points
+const TAG_ORDER: (Tag | undefined)[] = [undefined, 'key', 'read', 'question', 'quote'];
+const nextTag = (t?: Tag) => TAG_ORDER[(TAG_ORDER.indexOf(t) + 1) % TAG_ORDER.length];
+
 function Writer(p: {
+  learning: boolean;
   column: object;
   title: string;
   attendees: string;
@@ -260,8 +303,9 @@ function Writer(p: {
   when: string | null;
   onTitle: (t: string) => void;
   onAttendees: (t: string) => void;
-  onAdd: (t: string) => void;
+  onAdd: (t: string, tag?: Tag) => void;
   onChange: (id: string, t: string) => void;
+  onTag: (id: string, tag?: Tag) => void;
   onRemove: (id: string) => void;
   dict: ReturnType<typeof useDictation>;
   organised: boolean;
@@ -277,18 +321,24 @@ function Writer(p: {
   const listening = p.dict.state === 'listening';
   const canMic = p.dict.state !== 'unsupported';
   const scroll = useRef<ScrollView>(null);
+  // Learning: the tag the next note gets (then back to none)
+  const [tag, setTag] = useState<Tag | undefined>(undefined);
+  const L = (meetingAr: string, meetingEn: string, learnAr: string, learnEn: string) => (p.learning ? tx(learnAr, learnEn) : tx(meetingAr, meetingEn));
 
   const submit = () => {
     if (!draft.trim()) return;
-    p.onAdd(draft);
+    p.onAdd(draft, tag);
+    setTag(undefined);
     setDraft('');
     setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 60);
   };
   const mic = () => {
     if (listening) return void p.dict.finish();
     // On web this must run inside the tap
+    const withTag = tag;
     p.dict.start((t) => {
-      p.onAdd(t);
+      p.onAdd(t, withTag);
+      setTag(undefined);
       setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 60);
     });
   };
@@ -301,30 +351,30 @@ function Writer(p: {
           <View style={{ backgroundColor: C.surface, borderRadius: R.card, padding: 16, gap: 10, ...lift }}>
             <View style={{ flexDirection: D.row, alignItems: 'center', gap: 8 }}>
               <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: tint(C.indigoHi, 0.1), alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name="account-group-outline" size={17} color={C.indigoHi} />
+                <Icon name={p.learning ? 'school-outline' : 'account-group-outline'} size={17} color={C.indigoHi} />
               </View>
-              <T size={TS.small} color={C.sub}>{p.when ? meetingWhen(p.when) : tx('اجتماع اليوم', 'Today’s meeting')}</T>
+              <T size={TS.small} color={C.sub}>{p.when ? meetingWhen(p.when) : L('اجتماع اليوم', 'Today’s meeting', 'دورة أو تدريب أو محاضرة', 'A course, training or talk')}</T>
             </View>
             <TextInput
               value={p.title}
               onChangeText={p.onTitle}
-              placeholder={tx('عنوان الاجتماع', 'Meeting title')}
+              placeholder={L('عنوان الاجتماع', 'Meeting title', 'اسم الدورة أو التدريب', 'Course or training name')}
               placeholderTextColor={C.faint}
               maxLength={300}
               returnKeyType="next"
               onSubmitEditing={() => input.current?.focus()}
-              accessibilityLabel={tx('عنوان الاجتماع', 'Meeting title')}
+              accessibilityLabel={L('عنوان الاجتماع', 'Meeting title', 'اسم الدورة', 'Course name')}
               style={{ fontFamily: F.bold, fontSize: 22, color: C.indigo, textAlign: D.align, writingDirection: D.writing, paddingVertical: 4, ...webInput }}
             />
             <View style={{ flexDirection: D.row, alignItems: 'center', gap: 8, borderTopWidth: 1, borderTopColor: C.line, paddingTop: 10 }}>
-              <Icon name="account-multiple-outline" size={18} color={C.faint} />
+              <Icon name={p.learning ? 'account-tie-outline' : 'account-multiple-outline'} size={18} color={C.faint} />
               <TextInput
                 value={p.attendees}
                 onChangeText={p.onAttendees}
-                placeholder={tx('الحضور (اختياري): سالم، قسم التقنية…', 'Attendees (optional): Salem, IT…')}
+                placeholder={L('الحضور (اختياري): سالم، قسم التقنية…', 'Attendees (optional): Salem, IT…', 'المدرّب أو الجهة (اختياري)', 'Trainer or provider (optional)')}
                 placeholderTextColor={C.faint}
                 maxLength={1000}
-                accessibilityLabel={tx('الحضور', 'Attendees')}
+                accessibilityLabel={L('الحضور', 'Attendees', 'المدرّب', 'Trainer')}
                 style={{ flex: 1, fontFamily: F.regular, fontSize: TS.body, color: C.text, textAlign: D.align, writingDirection: D.writing, paddingVertical: 4, ...webInput }}
               />
             </View>
@@ -332,7 +382,7 @@ function Writer(p: {
 
           {/* The points */}
           <View style={{ flexDirection: D.row, alignItems: 'center', justifyContent: 'space-between', marginTop: 22, marginBottom: 10 }}>
-            <T w="bold" size={17}>{tx('النقاط', 'Points')}</T>
+            <T w="bold" size={17}>{L('النقاط', 'Points', 'ملاحظاتي', 'My notes')}</T>
             <T size={TS.small} color={C.sub}>{p.points.length ? tx(`${p.points.length} ${p.points.length === 1 ? 'نقطة' : p.points.length === 2 ? 'نقطتان' : p.points.length <= 10 ? 'نقاط' : 'نقطة'}`, `${p.points.length} point${p.points.length === 1 ? '' : 's'}`) : ''}</T>
           </View>
 
@@ -340,9 +390,21 @@ function Writer(p: {
             <View style={{ backgroundColor: C.surface, borderRadius: R.card, ...lift, overflow: 'hidden' }}>
               {p.points.map((pt, i) => (
                 <View key={pt.id} style={{ flexDirection: D.row, alignItems: 'flex-start', gap: 12, paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: i ? 1 : 0, borderTopColor: C.line }}>
-                  <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: tint(C.glow, 0.12), alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>
-                    <T size={12} w="bold" color={C.glowText}>{i + 1}</T>
-                  </View>
+                  {p.learning ? (
+                    <Pressable
+                      onPress={() => p.onTag(pt.id, nextTag(pt.tag))}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={pt.tag ? TAG_INFO[pt.tag].label() : tx('بلا وسم، اضغط لتغييره', 'No tag, tap to change')}
+                      style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: pt.tag ? tint(TAG_INFO[pt.tag].color, 0.14) : C.surfaceAlt, alignItems: 'center', justifyContent: 'center', marginTop: 0 }}
+                    >
+                      {pt.tag ? <Icon name={TAG_INFO[pt.tag].icon} size={16} color={TAG_INFO[pt.tag].color} /> : <T size={12} w="bold" color={C.faint}>{i + 1}</T>}
+                    </Pressable>
+                  ) : (
+                    <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: tint(C.glow, 0.12), alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>
+                      <T size={12} w="bold" color={C.glowText}>{i + 1}</T>
+                    </View>
+                  )}
                   {editing === pt.id ? (
                     <TextInput
                       value={pt.text}
@@ -370,7 +432,9 @@ function Writer(p: {
             <View style={{ flexDirection: D.row, alignItems: 'center', gap: 12, padding: 14, borderRadius: R.card, borderWidth: 1.5, borderStyle: 'dashed', borderColor: C.lineHi }}>
               <GhaithBot state="idle" size={58} />
               <T size={TS.small} color={C.sub} style={{ flex: 1, lineHeight: 21 }}>
-                {tx('اكتب كل نقطة كما تأتي في الاجتماع، باختصار وبالعامية إن شئت: «سالم يرسل الميزانية الخميس»، «اتفقنا نأجل الإطلاق». في النهاية أرتّبها لك محضراً وأستخرج المهام.', 'Write each point as it comes, short is fine: “Salem sends the budget Thursday”, “agreed to delay the launch”. At the end I turn them into minutes and pull out the actions.')}
+                {p.learning
+                  ? tx('اكتب أو قل كل فكرة كما تسمعها، باختصار. ميّز المهم بنجمة، وما تريد القراءة عنه بكتاب. في النهاية أرتّبها لك: الخلاصة، أهم الأفكار، المصطلحات، وما يستحق القراءة. لا شيء يصبح مهمة إلا إذا طلبت.', 'Type or say each idea as you hear it. Star what matters and mark what you want to read about. At the end I organise it: the gist, key ideas, terms and what is worth reading. Nothing becomes a task unless you ask.')
+                  : tx('اكتب كل نقطة كما تأتي في الاجتماع، باختصار وبالعامية إن شئت: «سالم يرسل الميزانية الخميس»، «اتفقنا نأجل الإطلاق». في النهاية أرتّبها لك محضراً وأستخرج المهام.', 'Write each point as it comes, short is fine: “Salem sends the budget Thursday”, “agreed to delay the launch”. At the end I turn them into minutes and pull out the actions.')}
               </T>
             </View>
           )}
@@ -381,6 +445,26 @@ function Writer(p: {
       {/* Writing the next point, and organising */}
       <View style={{ borderTopWidth: 1, borderTopColor: C.line, backgroundColor: 'rgba(248,250,255,0.97)', paddingHorizontal: wide ? 36 : 16, paddingTop: 10, paddingBottom: p.bottom + 14 }}>
         <View style={[p.column, { gap: 10 }]}>
+          {p.learning && (
+            <View style={{ flexDirection: D.row, flexWrap: 'wrap', gap: 6 }}>
+              {(['key', 'read', 'question', 'quote'] as Tag[]).map((k) => {
+                const on = tag === k;
+                const info = TAG_INFO[k];
+                return (
+                  <Pressable
+                    key={k}
+                    onPress={() => setTag(on ? undefined : k)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                    style={{ flexDirection: D.row, alignItems: 'center', gap: 5, height: 32, paddingHorizontal: 11, borderRadius: R.pill, borderWidth: 1.5, borderColor: on ? info.color : C.line, backgroundColor: on ? tint(info.color, 0.12) : C.surface }}
+                  >
+                    <Icon name={info.icon} size={14} color={info.color} />
+                    <T size={12.5} w="bold" color={on ? info.color : C.sub}>{info.label()}</T>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
           <View style={{ flexDirection: D.row, alignItems: 'flex-end', gap: 8, backgroundColor: C.surface, borderRadius: 24, borderWidth: 1.5, borderColor: listening ? tint(C.late, 0.5) : C.line, padding: 5 }}>
             <Pressable
               onPress={mic}
@@ -399,10 +483,10 @@ function Writer(p: {
               onSubmitEditing={submit}
               submitBehavior="submit"
               returnKeyType="done"
-              placeholder={listening ? tx('أستمع… قل النقطة', 'Listening… say the point') : tx('اكتب نقطة واضغط إدخال', 'Type a point, press Enter')}
+              placeholder={listening ? L('أستمع… قل النقطة', 'Listening… say the point', 'أستمع… قل الفكرة', 'Listening… say the idea') : L('اكتب نقطة واضغط إدخال', 'Type a point, press Enter', 'اكتب فكرة واضغط إدخال', 'Type an idea, press Enter')}
               placeholderTextColor={listening ? C.late : C.faint}
               maxLength={1000}
-              accessibilityLabel={tx('نقطة جديدة', 'New point')}
+              accessibilityLabel={L('نقطة جديدة', 'New point', 'ملاحظة جديدة', 'New note')}
               style={{ flex: 1, minHeight: 42, fontFamily: F.regular, fontSize: TS.body, color: C.text, textAlign: D.align, writingDirection: D.writing, paddingVertical: 10, paddingHorizontal: 4, ...webInput }}
             />
             <Pressable
@@ -420,13 +504,13 @@ function Writer(p: {
             <PrimaryButton
               style={{ flex: 1 }}
               icon="creation"
-              label={p.organised ? tx('أعد ترتيب المحضر', 'Organise again') : tx('رتّب المحضر مع غيث', 'Organise with Ghaith')}
+              label={p.organised ? L('أعد ترتيب المحضر', 'Organise again', 'أعد ترتيب ملاحظاتي', 'Organise again') : L('رتّب المحضر مع غيث', 'Organise with Ghaith', 'رتّب ما تعلّمته مع غيث', 'Organise with Ghaith')}
               onPress={p.onOrganise}
               disabled={!p.points.length}
             />
             {p.onBack && (
               <Pressable onPress={p.onBack} accessibilityRole="button" style={{ height: 54, paddingHorizontal: 18, borderRadius: 27, borderWidth: 1.5, borderColor: C.lineHi, alignItems: 'center', justifyContent: 'center', backgroundColor: C.surface }}>
-                <T w="bold" color={C.indigo}>{tx('المحضر', 'Minutes')}</T>
+                <T w="bold" color={C.indigo}>{L('المحضر', 'Minutes', 'الخلاصة', 'Summary')}</T>
               </Pressable>
             )}
           </View>

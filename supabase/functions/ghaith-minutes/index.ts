@@ -1,4 +1,6 @@
-// ghaith-minutes: organises a meeting's points into minutes, and proposes its actions as tasks.
+// ghaith-minutes: organises a meeting's points into minutes and proposes its actions as tasks, or, for a learning
+// session (a course, training or talk: kind 'learning'), organises the notes into what to keep: takeaways, terms,
+// what to read more about, how to apply it. Nothing from a learning session is proposed as a task.
 // The person writes the title, who attended and the points as they come; Ghaith returns formal minutes (a summary,
 // the points grouped by topic, decisions, open questions, the next meeting) and the actions: theirs become tasks,
 // other people's become "waiting for" tasks. The minutes are saved on the meeting; the tasks are only proposals,
@@ -122,6 +124,69 @@ The user's open tasks (titles):
 ${o.open.length ? o.open.map((t) => '- ' + t).join('\n') : '(none)'}`;
 }
 
+// ---------- learning (a course, training, talk or reading) ----------
+const LEARN_TOOL = {
+  name: 'learning',
+  description: 'Returns the organised notes of what the user learned.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      summary: { type: 'string', description: 'Two or three sentences: what the session was about and its main message.' },
+      takeaways: {
+        type: 'array',
+        description: 'The ideas worth keeping, most important first (points tagged key first). 3 to 8.',
+        items: { type: 'object', properties: { title: { type: 'string', description: 'The idea in a few words.' }, detail: { type: 'string', description: 'One or two sentences that make it clear and usable.' } }, required: ['title', 'detail'] },
+      },
+      sections: {
+        type: 'array',
+        description: 'All the notes, grouped by topic and rephrased clearly. Every note belongs to one section.',
+        items: { type: 'object', properties: { heading: { type: 'string' }, points: { type: 'array', items: { type: 'string' } } }, required: ['heading', 'points'] },
+      },
+      terms: {
+        type: 'array',
+        description: 'Terms, tools or concepts mentioned that deserve a short definition. Only ones you can define accurately. Empty if none.',
+        items: { type: 'object', properties: { term: { type: 'string' }, meaning: { type: 'string', description: 'One clear sentence.' } }, required: ['term', 'meaning'] },
+      },
+      read_more: {
+        type: 'array',
+        description: 'Topics to read more about: every note tagged read, plus at most 2 others clearly worth deepening.',
+        items: { type: 'object', properties: { topic: { type: 'string' }, why: { type: 'string', description: 'Why it is worth reading, in one sentence.' }, search: { type: 'string', description: 'A good web search phrase for it (English for technical topics).' } }, required: ['topic', 'why', 'search'] },
+      },
+      apply: { type: 'array', items: { type: 'string' }, description: '2 to 4 concrete ways to apply this in the user’s work. Empty if it does not apply.' },
+      questions: {
+        type: 'array',
+        description: 'Questions the user noted (tagged question, or written as a question).',
+        items: { type: 'object', properties: { q: { type: 'string' }, answer: { type: ['string', 'null'], description: 'A short accurate answer if you are confident, else null.' } }, required: ['q'] },
+      },
+      quotes: { type: 'array', items: { type: 'string' }, description: 'Notes tagged quote, kept word for word.' },
+    },
+    required: ['summary', 'takeaways', 'sections', 'terms', 'read_more', 'apply', 'questions', 'quotes'],
+  },
+};
+
+const TAGS: Record<string, string> = { key: 'KEY', read: 'READ MORE', question: 'QUESTION', quote: 'QUOTE' };
+
+function learnPrompt(o: { title: string; by: string; name: string | null; notes: string[]; lang: string }): string {
+  const language = o.lang === 'en'
+    ? 'Write everything in clear, concise English.'
+    : 'اكتب بالعربية الفصحى المبسّطة الواضحة، حتى لو كُتبت الملاحظات بالعامية أو بخليط من العربية والإنجليزية. احتفظ بأسماء الأدوات والمصطلحات الإنجليزية كما هي، ويمكنك ذكر المقابل العربي بجانبها.';
+  return `You are Ghaith (غيث), the personal assistant of ${o.name || 'the user'}, an administrative officer at a government entity in the UAE. During a course, training, talk or reading they wrote quick notes, as they came. Turn them into a learning note they will keep and come back to, using the learning tool. This is not a meeting: there are no tasks, owners or deadlines.
+
+${language}
+
+Rules:
+- The notes are the source. Rephrase for clarity and group by topic; you may merge notes that say the same thing. Never invent what the speaker said.
+- You may add your own knowledge only where the schema asks for it (term meanings, why a topic is worth reading, how to apply it, answers to questions), and only when you are sure it is accurate.
+- Notes tagged KEY are the user's most important ideas: lead the takeaways with them. Notes tagged READ MORE all go in read_more. Notes tagged QUOTE go in quotes word for word. Notes tagged QUESTION go in questions.
+- Call the learning tool exactly once, with no text before or after.
+
+Session: ${o.title || '(no title)'}
+Given by: ${o.by || '(not given)'}
+
+Known facts about the user:
+${o.notes.length ? o.notes.map((n) => '- ' + n).join('\n') : '(none)'}`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return fail(405, 'METHOD', 'POST only');
@@ -142,9 +207,16 @@ Deno.serve(async (req) => {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) return fail(503, 'NOT_CONFIGURED', m('غيث غير مفعّل بعد.', 'Ghaith is not set up yet.'));
 
-  const { data: meeting } = await db.from('ghaith_meetings').select('id,title,held_at,attendees,points').eq('id', String(body.meeting_id ?? '')).maybeSingle();
+  const { data: meeting } = await db.from('ghaith_meetings').select('id,kind,title,held_at,attendees,points').eq('id', String(body.meeting_id ?? '')).maybeSingle();
   if (!meeting) return fail(404, 'NOT_FOUND', m('لم أجد هذا الاجتماع.', 'Meeting not found.'));
-  const points = ((meeting.points ?? []) as { text?: string }[]).map((p) => str(p.text, 1000)).filter(Boolean).slice(0, 150);
+  const learning = meeting.kind === 'learning';
+  const points = ((meeting.points ?? []) as { text?: string; tag?: string }[])
+    .map((p) => {
+      const t = str(p.text, 1000);
+      return t && learning && p.tag && TAGS[p.tag] ? `[${TAGS[p.tag]}] ${t}` : t;
+    })
+    .filter(Boolean)
+    .slice(0, 150);
   if (!points.length) return fail(400, 'EMPTY', m('أضف نقطة واحدة على الأقل.', 'Add at least one point.'));
 
   const now = new Date();
@@ -159,26 +231,30 @@ Deno.serve(async (req) => {
     db.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
   ]);
   const followUpDays = settings?.follow_up_days ?? 3;
-  const system = systemPrompt({
-    now,
-    heldAt: new Date(meeting.held_at),
-    title: meeting.title,
-    attendees: meeting.attendees ?? '',
-    name: (profile as { display_name?: string } | null)?.display_name ?? null,
-    notes: ((notes ?? []) as { fact: string }[]).map((n) => n.fact),
-    open: ((open ?? []) as { title: string }[]).map((t) => t.title),
-    followUpDays,
-    lang,
-  });
+  const factList = ((notes ?? []) as { fact: string }[]).map((n) => n.fact);
+  const displayName = (profile as { display_name?: string } | null)?.display_name ?? null;
+  const system = learning
+    ? learnPrompt({ title: meeting.title, by: meeting.attendees ?? '', name: displayName, notes: factList, lang })
+    : systemPrompt({
+        now,
+        heldAt: new Date(meeting.held_at),
+        title: meeting.title,
+        attendees: meeting.attendees ?? '',
+        name: displayName,
+        notes: factList,
+        open: ((open ?? []) as { title: string }[]).map((t) => t.title),
+        followUpDays,
+        lang,
+      });
   const content = points.map((p, i) => `${i + 1}. ${p}`).join('\n');
-  await db.from('ghaith_messages').insert({ role: 'user', content: `[meeting] ${meeting.title}`.slice(0, 300), actions: [] });
+  await db.from('ghaith_messages').insert({ role: 'user', content: `[${learning ? 'learning' : 'meeting'}] ${meeting.title}`.slice(0, 300), actions: [] });
 
   let input: Record<string, unknown> | null = null;
   for (let attempt = 0; attempt < 2 && !input; attempt++) {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: MODEL, max_tokens: 6000, system, tools: [TOOL], messages: [{ role: 'user', content }] }),
+      body: JSON.stringify({ model: MODEL, max_tokens: 6000, system, tools: [learning ? LEARN_TOOL : TOOL], messages: [{ role: 'user', content }] }),
     });
     if (!res.ok) {
       console.error('[ghaith-minutes] Claude', res.status, (await res.text()).slice(0, 300));
@@ -190,6 +266,26 @@ Deno.serve(async (req) => {
     // The model answers in text now and then instead of calling the tool: ask once more
     if (!input && attempt === 0) continue;
     if (!input) return fail(502, 'UPSTREAM', m('تعذّر الترتيب هذه المرة، حاول بعد قليل.', 'Could not organise it right now, try again shortly.'));
+  }
+
+  // A learning note: checked and shaped, nothing proposed as a task
+  if (learning) {
+    const i = input!;
+    const objs = (v: unknown, max: number) => (Array.isArray(v) ? (v as Record<string, unknown>[]).filter((x) => x && typeof x === 'object').slice(0, max) : []);
+    const note = {
+      summary: str(i.summary, 1500),
+      takeaways: objs(i.takeaways, 12).map((t) => ({ title: str(t.title, 200), detail: str(t.detail, 800) })).filter((t) => t.title),
+      sections: objs(i.sections, 20).map((x) => ({ heading: str(x.heading, 200), points: list(x.points, 30, 800) })).filter((x) => x.heading && x.points.length),
+      terms: objs(i.terms, 20).map((t) => ({ term: str(t.term, 120), meaning: str(t.meaning, 600) })).filter((t) => t.term && t.meaning),
+      read_more: objs(i.read_more, 12).map((t) => ({ topic: str(t.topic, 200), why: str(t.why, 600), search: str(t.search, 200) })).filter((t) => t.topic),
+      apply: list(i.apply, 6, 600),
+      questions: objs(i.questions, 12).map((t) => ({ q: str(t.q, 400), answer: str(t.answer, 800) || null })).filter((t) => t.q),
+      quotes: list(i.quotes, 10, 600),
+      model: MODEL,
+    };
+    const { error } = await db.from('ghaith_meetings').update({ minutes: note, organized_at: now.toISOString() }).eq('id', meeting.id);
+    if (error) console.error('[ghaith-minutes] save', error.message);
+    return reply(200, { minutes: note });
   }
 
   // Checked and shaped: minutes to keep, actions to propose

@@ -1,10 +1,11 @@
 // Desktop navigation, in the brand's deep indigo: the mark, the four places (home, tasks, radar, chat), the two
 // spaces (work, personal) with their open counts, and the account at the bottom.
-import { router, usePathname } from 'expo-router';
+import { router, useGlobalSearchParams, usePathname } from 'expo-router';
 import Constants from 'expo-constants';
 import React from 'react';
 import { Pressable, View } from 'react-native';
 import { D, tx } from '../lib/i18n';
+import { useMeetings } from '../lib/meetings';
 import { setSpace, SpaceFilter, useSpace } from '../lib/space';
 import { useStore } from '../lib/store';
 import { SPACES, spaceOf } from '../lib/tasks';
@@ -71,6 +72,11 @@ function SpaceItem({ k, label, dot, count }: { k: SpaceFilter; label: string; do
 export function Sidebar() {
   const { tasks, name } = useStore();
   const path = usePathname();
+  // Meetings or the learning notebook: from the list's switch, or the kind of the session open
+  const q = useGlobalSearchParams<{ kind?: string; id?: string }>();
+  const { list: sessions } = useMeetings();
+  const notes = path.endsWith('/meetings') || path.endsWith('/meeting');
+  const learningOpen = q.kind === 'learning' || (!!q.id && sessions.find((m) => m.id === q.id)?.kind === 'learning');
   const open = tasks.filter((t) => t.status === 'open');
   const work = open.filter((t) => spaceOf(t.category) === 'work').length;
   const attention = useAttention().length;
@@ -89,7 +95,8 @@ export function Sidebar() {
         <Item icon="format-list-checks" label={tx('المهام', 'Tasks')} active={at('/tasks')} count={open.length} onPress={() => router.navigate('/tasks')} />
         <Item icon="radar" label={tx('الرادار', 'Radar')} active={at('/radar')} count={attention} alert onPress={() => router.navigate('/radar')} />
         <Item icon="message-text-outline" label={tx('المحادثة', 'Chat')} active={at('/chat')} onPress={() => router.navigate('/chat')} />
-        <Item icon="account-group-outline" label={tx('الاجتماعات', 'Meetings')} active={at('/meetings') || at('/meeting')} onPress={() => router.navigate('/meetings')} />
+        <Item icon="account-group-outline" label={tx('الاجتماعات', 'Meetings')} active={notes && !learningOpen} onPress={() => router.navigate({ pathname: '/meetings', params: { kind: 'meeting' } })} />
+        <Item icon="school-outline" label={tx('دفتر التعلّم', 'Learning notebook')} active={notes && learningOpen} onPress={() => router.navigate({ pathname: '/meetings', params: { kind: 'learning' } })} />
       </View>
 
       <T size={TS.tiny} w="bold" color="#A9AEE0" style={{ marginTop: 26, marginBottom: 6, paddingHorizontal: 12 }}>{tx('المساحات', 'Spaces')}</T>

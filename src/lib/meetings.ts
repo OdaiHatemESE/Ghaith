@@ -8,7 +8,21 @@ import type { Proposal } from './store';
 import { friendlyError, supabase } from './supabase';
 import { clock, longDate } from './tasks';
 
-export type Point = { id: string; text: string };
+export type Kind = 'meeting' | 'learning';
+/** A learning note's tag: key = important, read = read more about it */
+export type Tag = 'key' | 'read' | 'question' | 'quote';
+export type Point = { id: string; text: string; tag?: Tag };
+/** What Ghaith keeps from a course, training or talk */
+export type LearningNote = {
+  summary: string;
+  takeaways: { title: string; detail: string }[];
+  sections: { heading: string; points: string[] }[];
+  terms: { term: string; meaning: string }[];
+  read_more: { topic: string; why: string; search: string }[];
+  apply: string[];
+  questions: { q: string; answer: string | null }[];
+  quotes: string[];
+};
 export type MinutesAction = { title: string; owner: 'me' | 'other'; person: string | null; category: string; priority: string; due_at: string | null; remind_at: string | null; notes: string };
 export type Minutes = {
   summary: string;
@@ -21,10 +35,12 @@ export type Minutes = {
 };
 export type Meeting = {
   id: string;
+  kind: Kind;
   title: string;
   held_at: string;
   attendees: string | null;
   points: Point[];
+  /** Minutes for a meeting, a LearningNote for a learning session */
   minutes: Minutes | null;
   organized_at: string | null;
   actions_added_at: string | null;
@@ -32,7 +48,7 @@ export type Meeting = {
   updated_at: string;
 };
 
-const FIELDS = 'id,title,held_at,attendees,points,minutes,organized_at,actions_added_at,created_at,updated_at';
+const FIELDS = 'id,kind,title,held_at,attendees,points,minutes,organized_at,actions_added_at,created_at,updated_at';
 
 type State = { list: Meeting[]; loaded: boolean };
 let state: State = { list: [], loaded: false };
@@ -64,8 +80,10 @@ export async function loadMeeting(id: string): Promise<Meeting | null> {
 
 type Editable = Partial<Pick<Meeting, 'title' | 'attendees' | 'points' | 'held_at'>>;
 
+export const learningOf = (m: Meeting): LearningNote | null => (m.kind === 'learning' && m.minutes ? (m.minutes as unknown as LearningNote) : null);
+
 /** Creates the meeting the first time something is written in it */
-export async function createMeeting(fields: Editable): Promise<{ meeting: Meeting | null; error: string | null }> {
+export async function createMeeting(fields: Editable & { kind?: Kind }): Promise<{ meeting: Meeting | null; error: string | null }> {
   const { data, error } = await supabase.from('ghaith_meetings').insert(fields).select(FIELDS).single();
   if (error) return { meeting: null, error: friendlyError(error) };
   put(data as Meeting);
@@ -115,6 +133,19 @@ export const meetingWhen = (iso: string) => `${longDate(new Date(iso))} · ${clo
 
 /** The minutes as plain text, for email, WhatsApp or a document */
 export function minutesText(m: Meeting): string {
+  const l = learningOf(m);
+  if (l) {
+    const out: string[] = [tx(`ملاحظات: ${m.title || 'بدون عنوان'}`, `Notes: ${m.title || 'Untitled'}`), meetingWhen(m.held_at)];
+    if (m.attendees) out.push(tx(`قدّمها: ${m.attendees}`, `Given by: ${m.attendees}`));
+    if (l.summary) out.push('', l.summary);
+    if (l.takeaways.length) out.push('', tx('أهم ما تعلّمته', 'Key takeaways'), ...l.takeaways.map((t, i) => `${i + 1}. ${t.title}: ${t.detail}`));
+    if (l.read_more.length) out.push('', tx('أقرأ عنه أكثر', 'Read more about'), ...l.read_more.map((r) => `• ${r.topic} (${r.search})`));
+    if (l.terms.length) out.push('', tx('مصطلحات', 'Terms'), ...l.terms.map((t) => `• ${t.term}: ${t.meaning}`));
+    if (l.apply.length) out.push('', tx('كيف أطبّقها', 'How to apply it'), ...l.apply.map((a) => `• ${a}`));
+    if (l.questions.length) out.push('', tx('أسئلة', 'Questions'), ...l.questions.map((q) => `• ${q.q}${q.answer ? `\n  ${q.answer}` : ''}`));
+    if (l.quotes.length) out.push('', tx('اقتباسات', 'Quotes'), ...l.quotes.map((q) => `«${q}»`));
+    return out.join('\n');
+  }
   const n = m.minutes;
   const lines: string[] = [tx(`محضر اجتماع: ${m.title || 'بدون عنوان'}`, `Minutes: ${m.title || 'Untitled'}`), meetingWhen(m.held_at)];
   if (m.attendees) lines.push(tx(`الحضور: ${m.attendees}`, `Attendees: ${m.attendees}`));
@@ -170,5 +201,6 @@ export async function shareMinutes(m: Meeting): Promise<'shared' | 'copied' | 'f
 
 /** Opens the mail app with the minutes ready to send */
 export function mailMinutes(m: Meeting): string {
-  return `mailto:?subject=${encodeURIComponent(tx(`محضر اجتماع: ${m.title}`, `Minutes: ${m.title}`))}&body=${encodeURIComponent(minutesText(m))}`;
+  const subject = m.kind === 'learning' ? tx(`ملاحظات: ${m.title}`, `Notes: ${m.title}`) : tx(`محضر اجتماع: ${m.title}`, `Minutes: ${m.title}`);
+  return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(minutesText(m))}`;
 }

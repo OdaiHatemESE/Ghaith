@@ -285,6 +285,13 @@ export default function Home() {
                 <T w="medium" color={C.indigo}>{tx('محضر اجتماع', 'Meeting minutes')}</T>
               </Pressable>
               <Pressable
+                onPress={() => router.push({ pathname: '/meetings', params: { kind: 'learning' } })}
+                style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({ flexDirection: D.row, alignItems: 'center', gap: 6, paddingHorizontal: 16, height: 42, borderRadius: R.pill, borderWidth: 1.5, borderColor: C.lineHi, backgroundColor: hovered || pressed ? C.surfaceAlt : C.surface })}
+              >
+                <Icon name="school-outline" size={18} color={C.indigo} />
+                <T w="medium" color={C.indigo}>{tx('دفتر التعلّم', 'Learning notebook')}</T>
+              </Pressable>
+              <Pressable
                 onPress={() => setOpen('new')}
                 style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({ flexDirection: D.row, alignItems: 'center', gap: 6, paddingHorizontal: 16, height: 42, borderRadius: R.pill, borderWidth: 1.5, borderColor: C.lineHi, backgroundColor: hovered || pressed ? C.surfaceAlt : C.surface })}
               >

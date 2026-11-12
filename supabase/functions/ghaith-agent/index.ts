@@ -143,6 +143,17 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'search_notes',
+    description: 'يبحث في دفتر التعلّم (ملاحظات الدورات والتدريبات) ومحاضر الاجتماعات. استخدمه لأسئلة مثل "شو تعلمت عن Power BI؟" أو "شو قررنا في اجتماع لجنة التوظيف؟".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        text: { type: ['string', 'null'], description: 'كلمة أو موضوع للبحث (اتركه فارغاً لأحدث الجلسات)' },
+        kind: { type: 'string', enum: ['learning', 'meeting', 'any'] },
+      },
+    },
+  },
 ];
 
 function systemPrompt(now: Date, open: Task[], followUpDays: number, name: string | null, notes: { id: string; fact: string }[], lang: string, spoken = false): string {
@@ -196,6 +207,7 @@ ${known}
 - لما يقول "خلصت/انعملت/رد علي/وصلني" عن مهمة: complete_task. لما يقول "فلان رد بس لسا لازم أعمل كذا": خلّص القديمة وأضف الجديدة.
 - لما يسأل "شو عندي؟" أو "شو المتأخر؟": جاوب من القائمة فوق، الأهم والمتأخر أول، باختصار.
 - "ذكّرني" يعني أضف مهمة (أو عدّل التذكير إذا المهمة موجودة).
+- لما يسأل عن شي تعلّمه أو دورة أو تدريب أو اجتماع سابق ("شو تعلمت عن…"، "شو قررنا في اجتماع…"): استخدم search_notes وجاوب من ملاحظاته فقط، وقل إذا ما لقيت.
 
 اللغة والصياغة:
 ${lang === 'en'
@@ -290,6 +302,35 @@ async function runTool(db: SupabaseClient, name: string, input: Record<string, u
     const { data, error } = await q;
     if (error) return `خطأ: ${error.message}`;
     return (data as Task[]).length ? (data as Task[]).map((t) => `${describe(t, now)} | الحالة: ${t.status}`).join('\n') : 'ما لقيت شيء';
+  }
+
+  if (name === 'search_notes') {
+    let q = db.from('ghaith_meetings').select('kind,title,held_at,attendees,points,minutes').order('held_at', { ascending: false }).limit(60);
+    const kind = String(input.kind ?? 'any');
+    if (kind === 'learning' || kind === 'meeting') q = q.eq('kind', kind);
+    const { data, error } = await q;
+    if (error) return `خطأ: ${error.message}`;
+    const norm = (v: string) => v.toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/[\u064B-\u0652]/g, '');
+    const words = norm(String(input.text ?? '')).split(/\s+/).filter((w) => w.length > 1);
+    type Row = { kind: string; title: string; held_at: string; attendees: string | null; points: { text?: string }[]; minutes: Record<string, unknown> | null };
+    const hits = ((data ?? []) as Row[])
+      .map((r) => ({ r, blob: norm(JSON.stringify([r.title, r.attendees, r.points, r.minutes])) }))
+      .filter(({ blob }) => !words.length || words.some((w) => blob.includes(w)))
+      .slice(0, 5);
+    if (!hits.length) return 'ما لقيت شيء بالملاحظات';
+    let out = '';
+    for (const { r } of hits) {
+      const m = (r.minutes ?? {}) as Record<string, unknown>;
+      const part = [
+        `## ${r.kind === 'learning' ? 'تعلّم' : 'اجتماع'}: ${r.title || 'بدون عنوان'} (${localIso(new Date(r.held_at)).slice(0, 10)})${r.attendees ? ` — ${r.attendees}` : ''}`,
+        m.summary ? `الملخص: ${m.summary}` : '',
+        JSON.stringify({ takeaways: m.takeaways, decisions: m.decisions, terms: m.terms, read_more: m.read_more, apply: m.apply, questions: m.questions, sections: m.sections }),
+        m.summary ? '' : `النقاط: ${(r.points ?? []).map((p) => p.text).filter(Boolean).join(' | ')}`,
+      ].filter(Boolean).join('\n');
+      out += part.slice(0, 3000) + '\n\n';
+      if (out.length > 9000) break;
+    }
+    return out.trim();
   }
 
   if (name === 'remember') {
